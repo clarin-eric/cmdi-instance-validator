@@ -34,7 +34,7 @@ import eu.clarin.cmdi.validator.CMDIValidatorResult.Severity;
 
 
 public class CMDIValidatorTool {
-    private static final String PRG_NAME                = "cmdi-xml-validator";
+    private static final String PRG_NAME                = "cmdi-validator";
     private static final long DEFAULT_PROGRESS_INTERVAL = 15000;
     private static final Locale LOCALE                  = Locale.ENGLISH;
     private static final char OPT_DEBUG                 = 'd';
@@ -44,7 +44,7 @@ public class CMDIValidatorTool {
     private static final char OPT_THREAD_COUNT          = 't';
     private static final char OPT_NO_THREADS            = 'T';
     private static final char OPT_NO_ESTIMATE           = 'E';
-    private static final char OPT_SCHEMA_CACHE_DIR      = 'S';
+    private static final char OPT_SCHEMA_CACHE_DIR      = 'C';
     private static final Logger logger =
             LoggerFactory.getLogger(CMDIValidatorTool.class);
     private static final org.apache.log4j.ConsoleAppender appender;
@@ -144,11 +144,11 @@ public class CMDIValidatorTool {
                 /*
                  * initialize CMDIValidatorFactory
                  */
-                final CMDIValidatorFactory factory =
-                        CMDIValidatorFactory.newInstance(schemaCacheDir);
                 if (schemaCacheDir != null) {
                     logger.info("using schema cache directory: {}", schemaCacheDir);
                 }
+                final CMDIValidatorFactory factory =
+                        CMDIValidatorFactory.newInstance(schemaCacheDir);
 
                 /*
                  * process archive
