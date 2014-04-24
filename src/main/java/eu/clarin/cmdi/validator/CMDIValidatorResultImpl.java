@@ -152,7 +152,7 @@ final class CMDIValidatorResultImpl implements CMDIValidatorResult {
 
 
     void reportInfo(int line, int col, String message) {
-        reportWarning(line, col, message, null);
+        reportInfo(line, col, message, null);
     }
 
 
