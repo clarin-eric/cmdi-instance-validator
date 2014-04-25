@@ -1,6 +1,7 @@
 package eu.clarin.cmdi.validator;
 
 import java.io.File;
+import java.net.MalformedURLException;
 import java.net.URL;
 
 import javax.xml.transform.stream.StreamSource;
@@ -35,7 +36,8 @@ public class CMDIValidatorFactory {
     private final XsltExecutable schematronValidator;
 
 
-    private CMDIValidatorFactory(File cacheDirectory, boolean disableSchematron)
+    private CMDIValidatorFactory(File cacheDirectory,
+            File schematronSchemaFile, boolean disableSchematron)
             throws CMDIValidatorInitException {
         /*
          * initialize custom schema loader
@@ -92,10 +94,36 @@ public class CMDIValidatorFactory {
          */
         if (!disableSchematron) {
             logger.debug("initializing Schematron validator ...");
-            URL schema = this.getClass().getResource(DEFAULT_SCHEMATRON_SCHEMA);
-            if (schema == null) {
-                throw new CMDIValidatorInitException(
-                        "cannot locate schematron schema");
+
+            URL schema = null;
+            if (schematronSchemaFile != null) {
+                if (!schematronSchemaFile.exists()) {
+                    throw new CMDIValidatorInitException("file '" +
+                            schematronSchemaFile.getAbsolutePath() +
+                            "' does not exist");
+                }
+                if (!schematronSchemaFile.isFile()) {
+                    throw new CMDIValidatorInitException("file '" +
+                            schematronSchemaFile.getAbsolutePath() +
+                            "' is not a regular file");
+                }
+                if (!schematronSchemaFile.canRead()) {
+                    throw new CMDIValidatorInitException("file '" +
+                            schematronSchemaFile.getAbsolutePath() +
+                            "' cannot be read");
+                }
+                try {
+                    schema = schematronSchemaFile.toURI().toURL();
+                } catch (MalformedURLException e) {
+                    throw new CMDIValidatorInitException("internal error", e);
+                }
+            } else {
+                schema = this.getClass().getResource(DEFAULT_SCHEMATRON_SCHEMA);
+                if (schema == null) {
+                    throw new CMDIValidatorInitException(
+                            "cannot locate bundled Schematron schema: " +
+                                    DEFAULT_SCHEMATRON_SCHEMA);
+                }
             }
             final XsltCompiler compiler = processor.newXsltCompiler();
             XsltTransformer stage1 =
@@ -131,14 +159,16 @@ public class CMDIValidatorFactory {
 
 
     public static CMDIValidatorFactory newInstance(File cacheDircetory,
-            boolean disableSchematron) throws CMDIValidatorInitException {
-        return new CMDIValidatorFactory(cacheDircetory, disableSchematron);
+            File schematronSchemaFile, boolean disableSchematron)
+            throws CMDIValidatorInitException {
+        return new CMDIValidatorFactory(cacheDircetory, schematronSchemaFile,
+                disableSchematron);
     }
 
 
     public static CMDIValidatorFactory newInstance()
             throws CMDIValidatorInitException {
-        return new CMDIValidatorFactory(null, false);
+        return new CMDIValidatorFactory(null, null, false);
     }
 
 

@@ -44,7 +44,7 @@ public class CMDIValidatorTool {
     private static final char OPT_THREAD_COUNT          = 't';
     private static final char OPT_NO_THREADS            = 'T';
     private static final char OPT_NO_ESTIMATE           = 'E';
-    private static final char OPT_SCHEMA_CACHE_DIR      = 'C';
+    private static final char OPT_SCHEMA_CACHE_DIR      = 'c';
     private static final char OPT_NO_SCHEMATRON         = 'S';
     private static final char OPT_SCHEMATRON_FILE       = 's';
     private static final Logger logger =
@@ -64,6 +64,7 @@ public class CMDIValidatorTool {
         long progressInterval     = DEFAULT_PROGRESS_INTERVAL;
         File schemaCacheDir       = null;
         boolean disableSchematron = false;
+        File schematronFile       = null;
 
         /*
          * setup command line parser
@@ -119,12 +120,21 @@ public class CMDIValidatorTool {
             if (line.hasOption(OPT_SCHEMA_CACHE_DIR)) {
                 String dir = line.getOptionValue(OPT_SCHEMA_CACHE_DIR);
                 if ((dir == null) || dir.isEmpty()) {
-                    throw new ParseException("invalid argument for -S");
+                    throw new ParseException("invalid argument for -" +
+                            OPT_SCHEMA_CACHE_DIR);
                 }
                 schemaCacheDir = new File(dir);
             }
             if (line.hasOption(OPT_NO_SCHEMATRON)) {
                 disableSchematron = true;
+            }
+            if (line.hasOption(OPT_SCHEMATRON_FILE)) {
+                String name = line.getOptionValue(OPT_SCHEMATRON_FILE);
+                if ((name == null) || name.isEmpty()) {
+                    throw new ParseException("invalid argument for -" +
+                            OPT_SCHEMATRON_FILE);
+                }
+                schematronFile = new File(name);
             }
 
             final String[] remaining = line.getArgs();
@@ -156,9 +166,12 @@ public class CMDIValidatorTool {
                 if (schemaCacheDir != null) {
                     logger.info("using schema cache directory: {}", schemaCacheDir);
                 }
+                if (schematronFile != null) {
+                    logger.info("using Schematron schema from file: {}", schematronFile);
+                }
                 final CMDIValidatorFactory factory =
                         CMDIValidatorFactory.newInstance(schemaCacheDir,
-                                disableSchematron);
+                                schematronFile, disableSchematron);
 
                 /*
                  * process archive
@@ -339,12 +352,12 @@ public class CMDIValidatorTool {
                 .withDescription("disable Schematron validator")
                 .withLongOpt("no-schematron")
                 .create(OPT_NO_SCHEMATRON));
-//        g3.addOption(OptionBuilder
-//                .withDescription("load Schematron validator rules from file")
-//                .hasArg()
-//                .withArgName("FILE")
-//                .withLongOpt("schematron-file")
-//                .create(OPT_SCHEMATRON_FILE));
+        g3.addOption(OptionBuilder
+                .withDescription("load Schematron schema from file")
+                .hasArg()
+                .withArgName("FILE")
+                .withLongOpt("schematron-file")
+                .create(OPT_SCHEMATRON_FILE));
         options.addOptionGroup(g3);
         return options;
     }
