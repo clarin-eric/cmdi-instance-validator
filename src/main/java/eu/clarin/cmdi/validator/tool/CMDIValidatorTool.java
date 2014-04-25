@@ -45,6 +45,8 @@ public class CMDIValidatorTool {
     private static final char OPT_NO_THREADS            = 'T';
     private static final char OPT_NO_ESTIMATE           = 'E';
     private static final char OPT_SCHEMA_CACHE_DIR      = 'C';
+    private static final char OPT_NO_SCHEMATRON         = 'S';
+    private static final char OPT_SCHEMATRON_FILE       = 's';
     private static final Logger logger =
             LoggerFactory.getLogger(CMDIValidatorTool.class);
     private static final org.apache.log4j.ConsoleAppender appender;
@@ -54,13 +56,14 @@ public class CMDIValidatorTool {
         /*
          * application defaults
          */
-        boolean debugging     = false;
-        boolean quiet         = false;
-        boolean verbose       = false;
-        int threadCount       = Runtime.getRuntime().availableProcessors();
-        boolean estimate      = true;
-        long progressInterval = DEFAULT_PROGRESS_INTERVAL;
-        File schemaCacheDir   = null;
+        boolean debugging         = false;
+        boolean quiet             = false;
+        boolean verbose           = false;
+        int threadCount           = Runtime.getRuntime().availableProcessors();
+        boolean estimate          = true;
+        long progressInterval     = DEFAULT_PROGRESS_INTERVAL;
+        File schemaCacheDir       = null;
+        boolean disableSchematron = false;
 
         /*
          * setup command line parser
@@ -71,13 +74,16 @@ public class CMDIValidatorTool {
             final CommandLine line = parser.parse(options, args);
             // check incompatible combinations
             if (line.hasOption(OPT_THREAD_COUNT) && line.hasOption(OPT_NO_THREADS)) {
-                throw new ParseException("The -t and -T option are mutually exclusive");
+                throw new ParseException("The -t and -T options are mutually exclusive");
             }
             if (line.hasOption(OPT_DEBUG) && line.hasOption(OPT_QUIET)) {
-                throw new ParseException("The -d and -q switch are mutually exclusive");
+                throw new ParseException("The -d and -q switches are mutually exclusive");
             }
             if (line.hasOption(OPT_VERBOSE) && line.hasOption(OPT_QUIET)) {
-                throw new ParseException("The -v and -q switch are mutually exclusive");
+                throw new ParseException("The -v and -q switches are mutually exclusive");
+            }
+            if (line.hasOption(OPT_NO_SCHEMATRON) && line.hasOption(OPT_SCHEMATRON_FILE)) {
+                throw new ParseException("The -s and -T options are mutually exclusive");
             }
             // extract options
             if (line.hasOption(OPT_DEBUG)) {
@@ -117,6 +123,9 @@ public class CMDIValidatorTool {
                 }
                 schemaCacheDir = new File(dir);
             }
+            if (line.hasOption(OPT_NO_SCHEMATRON)) {
+                disableSchematron = true;
+            }
 
             final String[] remaining = line.getArgs();
             if ((remaining == null) || (remaining.length == 0)) {
@@ -148,7 +157,8 @@ public class CMDIValidatorTool {
                     logger.info("using schema cache directory: {}", schemaCacheDir);
                 }
                 final CMDIValidatorFactory factory =
-                        CMDIValidatorFactory.newInstance(schemaCacheDir);
+                        CMDIValidatorFactory.newInstance(schemaCacheDir,
+                                disableSchematron);
 
                 /*
                  * process archive
@@ -324,6 +334,18 @@ public class CMDIValidatorTool {
                 .withArgName("DIRECTORY")
                 .withLongOpt("schema-cache-dir")
                 .create(OPT_SCHEMA_CACHE_DIR));
+        OptionGroup g3 = new OptionGroup();
+        g3.addOption(OptionBuilder
+                .withDescription("disable Schematron validator")
+                .withLongOpt("no-schematron")
+                .create(OPT_NO_SCHEMATRON));
+//        g3.addOption(OptionBuilder
+//                .withDescription("load Schematron validator rules from file")
+//                .hasArg()
+//                .withArgName("FILE")
+//                .withLongOpt("schematron-file")
+//                .create(OPT_SCHEMATRON_FILE));
+        options.addOptionGroup(g3);
         return options;
     }
 
@@ -441,21 +463,28 @@ public class CMDIValidatorTool {
                 if (verbose) {
                     logger.warn("file '{}' is valid (with warnings):", file);
                     for (Message msg : result.getMessages()) {
-                        logger.warn(" ({}) {} [line={}, column={}]",
-                                msg.getSeverity().getShortcut(),
-                                msg.getMessage(),
-                                msg.getLineNumber(),
-                                msg.getColumnNumber());
+                        if ((msg.getLineNumber() != -1) &&
+                                (msg.getColumnNumber() != -1)) {
+                            logger.warn(" ({}) {} [line={}, column={}]",
+                                    msg.getSeverity().getShortcut(),
+                                    msg.getMessage(),
+                                    msg.getLineNumber(),
+                                    msg.getColumnNumber());
+                        } else {
+                            logger.warn(" ({}) {}",
+                                    msg.getSeverity().getShortcut(),
+                                    msg.getMessage());
+                        }
                     }
                 } else {
                     Message msg = result.getFirstMessage(Severity.WARNING);
-                    int count = result.getMessageCount(Severity.WARNING);
+                    int count   = result.getMessageCount(Severity.WARNING);
                     if (count > 1) {
                         logger.warn("file '{}' is valid (with warnings): {} ({} more warnings)",
-                                file, msg, (count - 1));
+                                file, msg.getMessage(), (count - 1));
                     } else {
                         logger.warn("file '{}' is valid (with warnings): {}",
-                                file, msg);
+                                file, msg.getMessage());
                     }
                 }
             } else {
@@ -478,15 +507,22 @@ public class CMDIValidatorTool {
             if (verbose) {
             logger.error("file '{}' is invalid:", file);
                 for (Message msg : result.getMessages()) {
-                    logger.error(" ({}) {} [line={}, column={}]",
-                            msg.getSeverity().getShortcut(),
-                            msg.getMessage(),
-                            msg.getLineNumber(),
-                            msg.getColumnNumber());
+                    if ((msg.getLineNumber() != -1) &&
+                            (msg.getColumnNumber() != -1)) {
+                        logger.error(" ({}) {} [line={}, column={}]",
+                                msg.getSeverity().getShortcut(),
+                                msg.getMessage(),
+                                msg.getLineNumber(),
+                                msg.getColumnNumber());
+                    } else {
+                        logger.error(" ({}) {}",
+                                msg.getSeverity().getShortcut(),
+                                msg.getMessage());
+                    }
                 }
             } else {
                 Message msg = result.getFirstMessage(Severity.ERROR);
-                int count = result.getMessageCount(Severity.ERROR);
+                int count   = result.getMessageCount(Severity.ERROR);
                 if (count > 1) {
                     logger.error("file '{}' is invalid: {} ({} more errors)",
                             file, msg.getMessage(), (count - 1));

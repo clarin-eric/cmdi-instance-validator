@@ -11,11 +11,21 @@ import java.util.Set;
 import javax.xml.XMLConstants;
 import javax.xml.transform.dom.DOMSource;
 
+import net.sf.saxon.s9api.Axis;
 import net.sf.saxon.s9api.DocumentBuilder;
 import net.sf.saxon.s9api.Processor;
+import net.sf.saxon.s9api.QName;
 import net.sf.saxon.s9api.SaxonApiException;
 import net.sf.saxon.s9api.WhitespaceStrippingPolicy;
+import net.sf.saxon.s9api.XPathCompiler;
+import net.sf.saxon.s9api.XPathExecutable;
+import net.sf.saxon.s9api.XPathSelector;
+import net.sf.saxon.s9api.XdmDestination;
+import net.sf.saxon.s9api.XdmItem;
 import net.sf.saxon.s9api.XdmNode;
+import net.sf.saxon.s9api.XdmSequenceIterator;
+import net.sf.saxon.s9api.XsltExecutable;
+import net.sf.saxon.s9api.XsltTransformer;
 
 import org.apache.xerces.impl.xs.XMLSchemaLoader;
 import org.apache.xerces.impl.xs.XSDDescription;
@@ -60,18 +70,44 @@ public final class CMDIValidator {
     private static final String HONOUR_ALL_SCHEMA_LOCATIONS_ID =
             "http://apache.org/xml/features/honour-all-schemaLocations";
     private static final int INITAL_SYMBOL_TABLE_SIZE = 16141;
+    private static final String SVRL_NAMESPACE_URI = "http://purl.oclc.org/dsdl/svrl";
+    private static final String SVRL_NAMESPACE_PREFIX = "svrl";
+    private static final QName SVRL_TEXT =
+            new QName(SVRL_NAMESPACE_URI, "text");
+    private static final QName SVRL_FAILED_ASSERT =
+            new QName(SVRL_NAMESPACE_URI, "failed-assert");
     private final Processor processor;
+    private final XPathExecutable xpath1;
+    private final XPathExecutable xpath2;
+    private final XsltTransformer schematronValidator;
     private final XML11Configuration config;
     private final DocumentBuilder builder;
     private final CMDIValidatorResultImpl result;
 
 
-    CMDIValidator(final Processor processor, final SchemaLoader schemaLoader)
+    CMDIValidator(final Processor processor, final SchemaLoader schemaLoader,
+            XsltExecutable schematronExecutable)
             throws CMDIValidatorInitException {
         if (processor == null) {
-            throw new NullPointerException("validator == null");
+            throw new NullPointerException("processor == null");
         }
         this.processor = processor;
+        if (schematronExecutable != null) {
+            try {
+                final XPathCompiler compiler = processor.newXPathCompiler();
+                compiler.declareNamespace(SVRL_NAMESPACE_PREFIX, SVRL_NAMESPACE_URI);
+                this.xpath1 = compiler.compile("//(svrl:failed-assert|svrl:successful-report)");
+                this.xpath2 = compiler.compile("preceding-sibling::svrl:fired-rule/@role");
+                this.schematronValidator = schematronExecutable.load();
+            } catch (SaxonApiException e) {
+                throw new CMDIValidatorInitException(
+                        "error initializing validator", e);
+            }
+        } else {
+            this.xpath1              = null;
+            this.xpath2              = null;
+            this.schematronValidator = null;
+        }
 
         try {
             /*
@@ -171,10 +207,11 @@ public final class CMDIValidator {
             });
 
             /*
-             * initialize Saxon
+             * initialize Saxon document builder
              */
             this.builder = this.processor.newDocumentBuilder();
-            this.builder.setWhitespaceStrippingPolicy(WhitespaceStrippingPolicy.IGNORABLE);
+            this.builder.setWhitespaceStrippingPolicy(
+                    WhitespaceStrippingPolicy.IGNORABLE);
 
             /*
              * initialize other stuff
@@ -183,7 +220,7 @@ public final class CMDIValidator {
         } catch (IOException e) {
             throw new CMDIValidatorInitException("initialization failed", e);
         }
-}
+    }
 
 
     public void validate(InputStream stream, File file,
@@ -204,7 +241,9 @@ public final class CMDIValidator {
              * step 2: perform Schematron validation
              */
             if (document != null) {
-                logger.debug("document = {}", document.getNodeName());
+                if (schematronValidator != null) {
+                    validateSchematron(document);
+                }
             } else {
                 logger.debug("parseInstance() returned no result");
             }
@@ -259,25 +298,54 @@ public final class CMDIValidator {
     }
 
 
-    //    private void validateSchematron(XdmNode document)
-//            throws CMDIValidatorException {
-//        try {
-//            logger.debug("performing schematron validation ...");
-//            schematronValidator.setSource(document.asSource());
-//            final XdmDestination destination = new XdmDestination();
-//            schematronValidator.setDestination(destination);
-//            schematronValidator.transform();
-//
-////            XdmNode validationReport = destination.getXdmNode();
-//
-//            // return ((net.sf.saxon.value.BooleanValue)
-//            // Saxon.evaluateXPath(validationReport,
-//            // "empty(//svrl:failed-assert[(preceding-sibling::svrl:fired-rule)[last()][empty(@role) or @role!='warning']])").evaluateSingle().getUnderlyingValue()).getBooleanValue();
-//        } catch (SaxonApiException e) {
-//            throw new CMDIValidatorException(
-//                    "error performing schematron validation", e);
-//        }
-//    }
+    private void validateSchematron(XdmNode document)
+            throws CMDIValidatorException {
+        try {
+            logger.debug("performing schematron validation ...");
+            schematronValidator.setSource(document.asSource());
+            final XdmDestination destination = new XdmDestination();
+            schematronValidator.setDestination(destination);
+            schematronValidator.transform();
+
+
+            XPathSelector selector = xpath1.load();
+            selector.setContextItem(destination.getXdmNode());
+            for (XdmItem item : selector) {
+                final XdmNode node = (XdmNode) item;
+                final XdmNode text = getFirstChild(node, SVRL_TEXT);
+                String msg = (text != null) ? text.getStringValue().trim() : null;
+                if (SVRL_FAILED_ASSERT.equals(node.getNodeName())) {
+                    XPathSelector selector2 = xpath2.load();
+                    String role = null;
+                    selector2.setContextItem(node);
+                    XdmItem evaluateSingle = selector2.evaluateSingle();
+                    if (evaluateSingle != null) {
+                        role = evaluateSingle.getStringValue().trim();
+                    }
+                    if ("warning".equalsIgnoreCase(role)) {
+                        result.reportWarning(-1, -1, msg);
+                    } else {
+                        result.reportError(-1, -1, msg);
+                    }
+                } else {
+                    result.reportInfo(-1, -1, msg);
+                }
+            }
+        } catch (SaxonApiException e) {
+            throw new CMDIValidatorException(
+                    "error performing schematron validation", e);
+        }
+    }
+
+
+    private static XdmNode getFirstChild(XdmNode parent, QName name) {
+        XdmSequenceIterator i = parent.axisIterator(Axis.CHILD, name);
+        if (i.hasNext()) {
+            return (XdmNode) i.next();
+        } else {
+            return null;
+        }
+    }
 
 
     private void reportWarning(int line, int col, String message, Throwable cause) {
