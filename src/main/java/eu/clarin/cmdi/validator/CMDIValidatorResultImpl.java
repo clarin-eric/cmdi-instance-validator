@@ -6,7 +6,7 @@ import java.util.LinkedList;
 import java.util.List;
 
 
-final class CMDIValidatorResultImpl implements CMDIValidatorResult {
+public final class CMDIValidatorResultImpl implements CMDIValidatorResult {
     private static class MessageImpl implements CMDIValidatorResult.Message {
         private Severity severity;
         private int line;
@@ -146,27 +146,22 @@ final class CMDIValidatorResultImpl implements CMDIValidatorResult {
     }
 
 
-    void setFile(File file) {
-        this.file = file;
-    }
-
-
-    void reportInfo(int line, int col, String message) {
+    public void reportInfo(int line, int col, String message) {
         reportInfo(line, col, message, null);
     }
 
 
-    void reportInfo(int line, int col, String message, Throwable cause) {
+    public void reportInfo(int line, int col, String message, Throwable cause) {
         entries.add(new MessageImpl(Severity.INFO, line, col, message, cause));
     }
 
 
-    void reportWarning(int line, int col, String message) {
+    public void reportWarning(int line, int col, String message) {
         reportWarning(line, col, message, null);
     }
 
 
-    void reportWarning(int line, int col, String message, Throwable cause) {
+    public void reportWarning(int line, int col, String message, Throwable cause) {
         switch (highestSeverity) {
         case WARNING:
             /* FALL-THROUGH */
@@ -179,12 +174,12 @@ final class CMDIValidatorResultImpl implements CMDIValidatorResult {
     }
 
 
-    void reportError(int line, int col, String message) {
+    public void reportError(int line, int col, String message) {
         reportError(line, col, message, null);
     }
 
 
-    void reportError(int line, int col, String message, Throwable cause) {
+    public void reportError(int line, int col, String message, Throwable cause) {
         switch (highestSeverity) {
         case ERROR:
             break;
@@ -192,6 +187,11 @@ final class CMDIValidatorResultImpl implements CMDIValidatorResult {
             highestSeverity = Severity.ERROR;
         }
         entries.add(new MessageImpl(Severity.ERROR, line, col, message, cause));
+    }
+
+
+    void setFile(File file) {
+        this.file = file;
     }
 
 

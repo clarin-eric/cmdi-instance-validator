@@ -3,8 +3,8 @@ package eu.clarin.cmdi.validator;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -48,6 +48,7 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Severity;
+import eu.clarin.cmdi.validator.utils.LRUCache;
 
 
 public final class CMDIValidator {
@@ -82,11 +83,14 @@ public final class CMDIValidator {
     private final XsltTransformer schematronValidator;
     private final XML11Configuration config;
     private final DocumentBuilder builder;
+    private final List<CMDIValidationPlugin> plugins;
     private final CMDIValidatorResultImpl result;
 
 
-    CMDIValidator(final Processor processor, final SchemaLoader schemaLoader,
-            XsltExecutable schematronExecutable)
+    CMDIValidator(final Processor processor,
+            final SchemaLoader schemaLoader,
+            XsltExecutable schematronExecutable,
+            List<CMDIValidationPlugin> plugins)
             throws CMDIValidatorInitException {
         if (processor == null) {
             throw new NullPointerException("processor == null");
@@ -214,6 +218,15 @@ public final class CMDIValidator {
                     WhitespaceStrippingPolicy.IGNORABLE);
 
             /*
+             * initialize plugins
+             */
+            if ((plugins != null) && !plugins.isEmpty()) {
+                this.plugins = plugins;
+            } else {
+                this.plugins = null;
+            }
+
+            /*
              * initialize other stuff
              */
             this.result =  new CMDIValidatorResultImpl();
@@ -237,12 +250,21 @@ public final class CMDIValidator {
              */
             final XdmNode document = parseInstance(stream);
 
-            /*
-             * step 2: perform Schematron validation
-             */
             if (document != null) {
+                /*
+                 * step 2: perform Schematron validation
+                 */
                 if (schematronValidator != null) {
                     validateSchematron(document);
+                }
+
+                /*
+                 * step 3: run plugins, if any
+                 */
+                if (plugins != null) {
+                    for (CMDIValidationPlugin plugin : plugins) {
+                        plugin.validate(document, result);
+                    }
                 }
             } else {
                 logger.debug("parseInstance() returned no result");
@@ -499,23 +521,5 @@ public final class CMDIValidator {
             return null;
         }
     }  // class ShadowCacheGrammarPool
-
-
-    @SuppressWarnings("serial")
-    private static class LRUCache<A, B> extends LinkedHashMap<A, B> {
-        private final int maxEntries;
-
-
-        public LRUCache(final int maxEntries) {
-            super(maxEntries + 1, 1.0f, true);
-            this.maxEntries = maxEntries;
-        }
-
-
-        @Override
-        protected boolean removeEldestEntry(final Map.Entry<A, B> eldest) {
-            return super.size() > maxEntries;
-        }
-    } // class LRUCache
 
 } // class CMDIValidator

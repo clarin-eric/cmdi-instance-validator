@@ -3,6 +3,8 @@ package eu.clarin.cmdi.validator;
 import java.io.File;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.xml.transform.stream.StreamSource;
 
@@ -34,10 +36,11 @@ public class CMDIValidatorFactory {
     private final Processor processor;
     private final SchemaLoader schemaLoader;
     private final XsltExecutable schematronValidator;
-
+    private final List<CMDIValidationPluginFactory> pluginFactories;
 
     private CMDIValidatorFactory(File cacheDirectory,
-            File schematronSchemaFile, boolean disableSchematron)
+            File schematronSchemaFile, boolean disableSchematron,
+            List<CMDIValidationPluginFactory> pluginFactories)
             throws CMDIValidatorInitException {
         /*
          * initialize custom schema loader
@@ -150,25 +153,47 @@ public class CMDIValidatorFactory {
             logger.debug("disabling Schematron validator");
             this.schematronValidator = null;
         }
+
+        /*
+         * store pluginFactories
+         */
+        if ((pluginFactories != null) && !pluginFactories.isEmpty()) {
+            this.pluginFactories = pluginFactories;
+        } else {
+            this.pluginFactories = null;
+        }
     }
 
 
     public CMDIValidator newValidator() throws CMDIValidatorInitException {
-        return new CMDIValidator(processor, schemaLoader, schematronValidator);
+        List<CMDIValidationPlugin> plugins = null;
+        if (pluginFactories != null) {
+            plugins = new ArrayList<CMDIValidationPlugin>(pluginFactories.size());
+            for (CMDIValidationPluginFactory pluginFactory : pluginFactories) {
+                plugins.add(pluginFactory.newInstance(processor));
+            }
+        }
+
+        return new CMDIValidator(processor, schemaLoader,
+                schematronValidator, plugins);
     }
 
 
     public static CMDIValidatorFactory newInstance(File cacheDircetory,
-            File schematronSchemaFile, boolean disableSchematron)
+            File schematronSchemaFile,
+            boolean disableSchematron,
+            List<CMDIValidationPluginFactory> pluginFactories)
             throws CMDIValidatorInitException {
-        return new CMDIValidatorFactory(cacheDircetory, schematronSchemaFile,
-                disableSchematron);
+        return new CMDIValidatorFactory(cacheDircetory,
+                schematronSchemaFile,
+                disableSchematron,
+                pluginFactories);
     }
 
 
     public static CMDIValidatorFactory newInstance()
             throws CMDIValidatorInitException {
-        return new CMDIValidatorFactory(null, null, false);
+        return new CMDIValidatorFactory(null, null, false, null);
     }
 
 

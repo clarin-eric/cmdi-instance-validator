@@ -4,13 +4,14 @@ import humanize.Humanize;
 
 import java.io.File;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import net.java.truevfs.access.TFile;
 import net.java.truevfs.access.TVFS;
 import net.java.truevfs.kernel.spec.FsSyncException;
-
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
@@ -22,6 +23,7 @@ import org.apache.commons.cli.ParseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import eu.clarin.cmdi.validator.CMDIValidationPluginFactory;
 import eu.clarin.cmdi.validator.CMDIValidator;
 import eu.clarin.cmdi.validator.CMDIValidatorEngine;
 import eu.clarin.cmdi.validator.CMDIValidatorFactory;
@@ -31,6 +33,7 @@ import eu.clarin.cmdi.validator.CMDIValidatorJobHandlerAdapter;
 import eu.clarin.cmdi.validator.CMDIValidatorResult;
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Message;
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Severity;
+import eu.clarin.cmdi.validator.plugins.CheckPidPluginFactory;
 
 
 public class CMDIValidatorTool {
@@ -47,6 +50,7 @@ public class CMDIValidatorTool {
     private static final char OPT_SCHEMA_CACHE_DIR      = 'c';
     private static final char OPT_NO_SCHEMATRON         = 'S';
     private static final char OPT_SCHEMATRON_FILE       = 's';
+    private static final char OPT_CHECK_PIDS            = 'p';
     private static final Logger logger =
             LoggerFactory.getLogger(CMDIValidatorTool.class);
     private static final org.apache.log4j.ConsoleAppender appender;
@@ -65,6 +69,7 @@ public class CMDIValidatorTool {
         File schemaCacheDir       = null;
         boolean disableSchematron = false;
         File schematronFile       = null;
+        boolean checkPids         = false;
 
         /*
          * setup command line parser
@@ -136,6 +141,9 @@ public class CMDIValidatorTool {
                 }
                 schematronFile = new File(name);
             }
+            if (line.hasOption(OPT_CHECK_PIDS)) {
+                checkPids = true;
+            }
 
             final String[] remaining = line.getArgs();
             if ((remaining == null) || (remaining.length == 0)) {
@@ -169,9 +177,19 @@ public class CMDIValidatorTool {
                 if (schematronFile != null) {
                     logger.info("using Schematron schema from file: {}", schematronFile);
                 }
+
+                List<CMDIValidationPluginFactory> pluginFactories =
+                        new ArrayList<CMDIValidationPluginFactory>();
+                if (checkPids) {
+                    logger.info("performing PID checking");
+                    pluginFactories.add(new CheckPidPluginFactory());
+                }
+
                 final CMDIValidatorFactory factory =
                         CMDIValidatorFactory.newInstance(schemaCacheDir,
-                                schematronFile, disableSchematron);
+                                schematronFile,
+                                disableSchematron,
+                                pluginFactories);
 
                 /*
                  * process archive
@@ -359,6 +377,10 @@ public class CMDIValidatorTool {
                 .withLongOpt("schematron-file")
                 .create(OPT_SCHEMATRON_FILE));
         options.addOptionGroup(g3);
+        options.addOption(OptionBuilder
+                .withDescription("check if persistent identifiers resolve correctly")
+                .withLongOpt("check-pids")
+                .create(OPT_CHECK_PIDS));
         return options;
     }
 
