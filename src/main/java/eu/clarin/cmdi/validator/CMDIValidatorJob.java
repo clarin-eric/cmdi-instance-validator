@@ -1,5 +1,6 @@
 package eu.clarin.cmdi.validator;
 
+import java.io.FileFilter;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -13,7 +14,8 @@ public class CMDIValidatorJob {
     private boolean canceled = false;
 
 
-    public CMDIValidatorJob(TFile root, CMDIValidatorJobHandler handler) {
+    public CMDIValidatorJob(TFile root, FileFilter filter,
+            CMDIValidatorJobHandler handler) {
         if (root == null) {
             throw new NullPointerException("root = null");
         }
@@ -25,8 +27,13 @@ public class CMDIValidatorJob {
             throw new NullPointerException("handler == null");
         }
         this.handler = handler;
-        this.fileEnumerator = new FileEnumerator(root);
+        this.fileEnumerator = new FileEnumerator(root, filter);
         this.handler.onJobStarted();
+    }
+
+
+    public CMDIValidatorJob(TFile root, CMDIValidatorJobHandler handler) {
+        this(root, null, handler);
     }
 
 
@@ -63,6 +70,9 @@ public class CMDIValidatorJob {
 
             if (fileEnumerator.isEmpty() || (file == null)) {
                 jobList.remove(this);
+                if (filesInProcessing == 0) {
+                    signalDone();
+                }
             }
             return file;
         } // synchronized (this)
@@ -76,19 +86,24 @@ public class CMDIValidatorJob {
                 throw new IllegalStateException("filesInProcessing < 0");
             }
             if (fileEnumerator.isEmpty() && (filesInProcessing == 0)) {
-                handler.onJobFinished(canceled);
-                if (canceled) {
-                    this.notifyAll();
-                    return true;
-                }
+                signalDone();
+                return true;
             }
         } // synchronized (this)
         return false;
     }
 
 
+    private void signalDone() {
+        handler.onJobFinished(canceled);
+        if (canceled) {
+            this.notifyAll();
+        }
+    }
+
+
     private final static class FileEnumerator {
-        private static final class FileList {
+        private final class FileList {
             private final TFile[] fileList;
             private int idx = 0;
 
@@ -99,28 +114,36 @@ public class CMDIValidatorJob {
 
 
             private TFile nextFile() {
-                if (idx < fileList.length) {
-                    return fileList[idx++];
-                } else {
-                    return null;
-                }
+                while (idx < fileList.length) {
+                    final TFile file = fileList[idx++];
+                    if (file.isDirectory()) {
+                        return file;
+                    }
+                    if ((filter != null) && !filter.accept(file)) {
+                        continue;
+                    }
+                    return file;
+                } // while
+                return null;
             }
 
             private int size() {
                 return (fileList.length - idx);
             }
         }
+        private final FileFilter filter;
         private final LinkedList<FileList> stack =
                 new LinkedList<FileList>();
 
 
-        private FileEnumerator(TFile root) {
+        private FileEnumerator(TFile root, FileFilter filter) {
             if (root == null) {
                 throw new NullPointerException("root == null");
             }
             if (!root.isDirectory()) {
                 throw new IllegalArgumentException("root is not a directory");
             }
+            this.filter = filter;
             pushDirectory(root);
         }
 
