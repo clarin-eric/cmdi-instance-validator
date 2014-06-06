@@ -38,9 +38,11 @@
             <outputDirectory>lib</outputDirectory>
             <directoryMode>0755</directoryMode>
             <fileMode>0644</fileMode>
+            <!--
             <excludes>
                 <exclude>*:sources</exclude>
             </excludes>
+            -->
         </dependencySet>
     </dependencySets>
 </assembly>

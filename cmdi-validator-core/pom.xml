@@ -1,0 +1,144 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>eu.clarin.cmdi</groupId>
+        <artifactId>cmdi-validator</artifactId>
+        <version>0.0.3-SNAPSHOT</version>
+    </parent>
+    <artifactId>cmdi-validator-core</artifactId>
+    <packaging>jar</packaging>
+
+    <properties>
+        <!-- versions of dependencies -->
+        <truevfs.version>0.10.6</truevfs.version>
+        <truecommons.version>2.3.4</truecommons.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+            <version>4.2.5</version>
+        </dependency>
+
+        <dependency>
+            <groupId>xerces</groupId>
+            <artifactId>xercesImpl-patched</artifactId>
+            <version>2.11.0</version>
+        </dependency>
+
+        <!-- required for Xerces (patched version has no proper dependencies) -->
+        <dependency>
+            <groupId>xml-apis</groupId>
+            <artifactId>xml-apis</artifactId>
+            <version>1.4.01</version>
+        </dependency>
+
+        <!-- Saxon -->
+        <dependency>
+            <groupId>net.sf.saxon</groupId>
+            <artifactId>Saxon-HE</artifactId>
+            <version>9.5.1-4</version>
+        </dependency>
+
+        <!-- TrueVFS -->
+        <dependency>
+            <groupId>net.java.truevfs</groupId>
+            <artifactId>truevfs-access</artifactId>
+            <version>${truevfs.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.java.truevfs</groupId>
+            <artifactId>truevfs-kernel-impl</artifactId>
+            <version>${truevfs.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>net.java.truevfs</groupId>
+            <artifactId>truevfs-ext-logging</artifactId>
+            <version>${truevfs.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>net.java.truevfs</groupId>
+            <artifactId>truevfs-driver-file</artifactId>
+            <version>${truevfs.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>net.java.truevfs</groupId>
+            <artifactId>truevfs-driver-zip</artifactId>
+            <version>${truevfs.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>net.java.truecommons</groupId>
+            <artifactId>truecommons-key-default</artifactId>
+            <version>${truecommons.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-math3</artifactId>
+            <version>3.2</version>
+        </dependency>
+    </dependencies>
+
+    <repositories>
+        <repository>
+            <id>lib</id>
+            <url>file://${basedir}/lib</url>
+        </repository>
+    </repositories>
+
+    <build>
+        <plugins>
+            <!--
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-javadoc-plugin</artifactId>
+              <executions>
+                <execution>
+                  <id>attach-javadoc</id>
+                  <goals>
+                    <goal>jar</goal>
+                  </goals>
+                </execution>
+              </executions>
+            </plugin>
+        -->
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-source</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
