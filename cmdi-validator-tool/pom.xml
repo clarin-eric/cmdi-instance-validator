@@ -100,6 +100,8 @@
                     </execution>
                 </executions>
                 <configuration>
+                    <finalName>cmdi-validator-${project.version}-bin</finalName>
+                      <appendAssemblyId>false</appendAssemblyId>
                     <descriptors>
                         <descriptor>src/main/assembly/bin.xml</descriptor>
                     </descriptors>

@@ -10,7 +10,7 @@
         <format>zip</format>
         -->
     </formats>
-    <baseDirectory>${project.artifactId}</baseDirectory>
+    <baseDirectory>cmdi-validator</baseDirectory>
     <files>
         <file>
             <source>src/main/bin/cmdi-validator.sh</source>
