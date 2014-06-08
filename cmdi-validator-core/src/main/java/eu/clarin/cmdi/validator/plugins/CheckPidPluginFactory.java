@@ -1,20 +1,9 @@
 package eu.clarin.cmdi.validator.plugins;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 
-import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
-import org.apache.http.StatusLine;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpHead;
-import org.apache.http.client.params.ClientPNames;
-import org.apache.http.client.utils.HttpClientUtils;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.params.CoreProtocolPNames;
-import org.apache.http.params.HttpParams;
-import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,7 +19,6 @@ import eu.clarin.cmdi.validator.CMDIValidationPluginFactory;
 import eu.clarin.cmdi.validator.CMDIValidatorException;
 import eu.clarin.cmdi.validator.CMDIValidatorInitException;
 import eu.clarin.cmdi.validator.CMDIValidatorResultImpl;
-import eu.clarin.cmdi.validator.utils.LRUCache;
 
 
 public class CheckPidPluginFactory implements CMDIValidationPluginFactory {
@@ -40,8 +28,10 @@ public class CheckPidPluginFactory implements CMDIValidationPluginFactory {
     private static final String HDL_PROXY_HTTPS = "https";
     private static final String HDL_PROXY_HOST = "hdl.handle.net";
     private static final String URN_SCHEME = "urn";
+    @SuppressWarnings("unused")
     private static final Logger logger =
             LoggerFactory.getLogger(CheckPidPlugin.class);
+    private final HandleResolver resolver = new HandleResolver();
 
 
     @Override
@@ -51,22 +41,10 @@ public class CheckPidPluginFactory implements CMDIValidationPluginFactory {
     }
 
     public class CheckPidPlugin implements CMDIValidationPlugin {
-        private final HttpClient httpClient;
         private final XPathExecutable xpath;
-        private final LRUCache<URI, Integer> cache =
-                new LRUCache<URI, Integer>(4*4096);
 
         private CheckPidPlugin(final Processor processor)
                 throws CMDIValidatorInitException {
-            this.httpClient = new DefaultHttpClient();
-
-            final HttpParams params = this.httpClient.getParams();
-            params.setParameter(CoreProtocolPNames.USER_AGENT,
-                    CheckPidPlugin.class.getPackage().getName() + "/0.0.1");
-            params.setBooleanParameter(ClientPNames.HANDLE_REDIRECTS, Boolean.TRUE);
-            params.setBooleanParameter(ClientPNames.ALLOW_CIRCULAR_REDIRECTS, true);
-            params.setIntParameter(ClientPNames.MAX_REDIRECTS, 16);
-
             try {
                 final XPathCompiler compiler = processor.newXPathCompiler();
                 this.xpath = compiler.compile(XPATH);
@@ -150,13 +128,7 @@ public class CheckPidPluginFactory implements CMDIValidationPluginFactory {
 
         private void checkHandle2(URI uri, CMDIValidatorResultImpl result)
                 throws CMDIValidatorException {
-            Integer code = cache.get(uri);
-            if (code == null) {
-                code = checkHandle3(uri, result);
-                // cache result
-                cache.put(uri, code);
-            }
-
+            int code = resolver.resolve(uri);
             switch (code) {
             case HttpStatus.SC_OK:
                 /* no special message in this case */
@@ -178,35 +150,6 @@ public class CheckPidPluginFactory implements CMDIValidationPluginFactory {
                         "' resolved with an unexpected result (" +
                         code + ")");
                 break;
-            }
-        }
-
-
-        private int checkHandle3(URI uri, CMDIValidatorResultImpl result)
-                throws CMDIValidatorException {
-            HttpHead request = null;
-            HttpResponse response = null;
-            try {
-                request = new HttpHead(uri);
-                response = httpClient.execute(request);
-
-                final StatusLine status = response.getStatusLine();
-                logger.debug("checked handle: file={}, uri={}, status={}",
-                        result.getFile(), uri, status.getStatusCode());
-                return status.getStatusCode();
-            } catch (IOException e) {
-                throw new CMDIValidatorException("error performing handle check", e);
-            } finally {
-                if (response != null) {
-                    try {
-                        EntityUtils.consume(response.getEntity());
-                    } catch (IOException ex) {
-                        /* IGNORE */
-                    }
-
-                    /* make sure to release allocated resources */
-                    HttpClientUtils.closeQuietly(response);
-                }
             }
         }
     }
