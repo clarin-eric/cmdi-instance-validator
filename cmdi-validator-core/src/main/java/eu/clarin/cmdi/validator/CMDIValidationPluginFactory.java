@@ -8,4 +8,4 @@ public interface CMDIValidationPluginFactory {
     public CMDIValidationPlugin newInstance(Processor processor)
             throws CMDIValidatorInitException;
 
-}
+} // class CMDIValidationPluginFactory

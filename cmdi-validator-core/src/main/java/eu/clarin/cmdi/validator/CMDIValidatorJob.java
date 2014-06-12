@@ -15,7 +15,7 @@ public class CMDIValidatorJob {
 
 
     public CMDIValidatorJob(TFile root, FileFilter filter,
-            CMDIValidatorJobHandler handler) {
+            CMDIValidatorJobHandler handler) throws CMDIValidatorException {
         if (root == null) {
             throw new NullPointerException("root = null");
         }
@@ -32,7 +32,8 @@ public class CMDIValidatorJob {
     }
 
 
-    public CMDIValidatorJob(TFile root, CMDIValidatorJobHandler handler) {
+    public CMDIValidatorJob(TFile root, CMDIValidatorJobHandler handler)
+            throws CMDIValidatorException {
         this(root, null, handler);
     }
 
@@ -95,7 +96,10 @@ public class CMDIValidatorJob {
 
 
     private void signalDone() {
-        handler.onJobFinished(canceled);
+        try {
+            handler.onJobFinished(canceled);
+        } catch (CMDIValidatorException e) {
+        }
         if (canceled) {
             this.notifyAll();
         }

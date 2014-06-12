@@ -8,4 +8,4 @@ public interface CMDIValidationPlugin {
     public void validate(XdmNode document, CMDIValidatorResultImpl result)
             throws CMDIValidatorException;
 
-}
+} // class CMDIValidationPlugin
