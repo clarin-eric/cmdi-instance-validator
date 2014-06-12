@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import net.java.truevfs.access.TFile;
 import net.java.truevfs.access.TVFS;
 import net.java.truevfs.kernel.spec.FsSyncException;
+
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
@@ -26,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import eu.clarin.cmdi.validator.CMDIValidationPluginFactory;
 import eu.clarin.cmdi.validator.CMDIValidator;
 import eu.clarin.cmdi.validator.CMDIValidatorEngine;
+import eu.clarin.cmdi.validator.CMDIValidatorException;
 import eu.clarin.cmdi.validator.CMDIValidatorFactory;
 import eu.clarin.cmdi.validator.CMDIValidatorInitException;
 import eu.clarin.cmdi.validator.CMDIValidatorJob;
@@ -216,9 +218,10 @@ public class CMDIValidatorTool {
                     final CMDIValidatorEngine engine =
                             new CMDIValidatorEngine(factory, threadCount);
                     final JobHandler handler = new JobHandler(verbose);
-                    final CMDIValidatorJob job =
-                            new CMDIValidatorJob(archive, handler);
                     try {
+                        final CMDIValidatorJob job =
+                                new CMDIValidatorJob(archive, handler);
+
                         engine.start();
                         logger.debug("submitting batch validation job ...");
                         engine.submit(job);
@@ -299,6 +302,12 @@ public class CMDIValidatorTool {
                     }
                 }
             }
+        } catch (CMDIValidatorException e) {
+            logger.error("error initalizing job: {}", e.getMessage());
+            if (debugging) {
+                logger.error(e.getMessage(), e);
+            }
+            System.exit(1);
         } catch (CMDIValidatorInitException e) {
             logger.error("error initializing validator: {}", e.getMessage());
             if (debugging) {
