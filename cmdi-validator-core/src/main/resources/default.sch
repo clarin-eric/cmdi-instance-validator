@@ -3,9 +3,17 @@
     <ns uri="http://www.w3.org/2001/XMLSchema-instance" prefix="xsi"/>
 
     <pattern>
-        <rule context="cmd:Header" role="warning">
+        <rule role="warning" context="cmd:Header">
             <assert test="string-length(cmd:MdProfile/text()) &gt; 0">
                 [CMDI Best Practices] A CMDI instance should contain a non-empty &lt;cmd:MdProfile&gt; element in &lt;cmd:Header&gt;.
+            </assert>
+        </rule>   
+    </pattern>
+
+    <pattern>
+        <rule  role="warning" context="cmd:Header">
+            <assert test="string-length(cmd:MdSelfLink/text()) &gt; 0">
+                [CMDI Best Practices] A CMDI instance should contain a non-empty &lt;cmd:MdSelfLink&gt; element in &lt;cmd:Header&gt;.
             </assert>
         </rule>   
     </pattern>
