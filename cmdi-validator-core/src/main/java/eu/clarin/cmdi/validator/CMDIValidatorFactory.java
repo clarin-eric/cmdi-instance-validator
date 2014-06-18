@@ -4,6 +4,7 @@ import java.io.File;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import javax.xml.transform.stream.StreamSource;
@@ -36,11 +37,12 @@ public class CMDIValidatorFactory {
     private final Processor processor;
     private final SchemaLoader schemaLoader;
     private final XsltExecutable schematronValidator;
-    private final List<CMDIValidationPluginFactory> pluginFactories;
+    private final List<CMDIValidatorExtension> extensions =
+            new ArrayList<CMDIValidatorExtension>();
+
 
     private CMDIValidatorFactory(File cacheDirectory,
-            File schematronSchemaFile, boolean disableSchematron,
-            List<CMDIValidationPluginFactory> pluginFactories)
+            File schematronSchemaFile, boolean disableSchematron)
             throws CMDIValidatorInitException {
         /*
          * initialize custom schema loader
@@ -49,12 +51,12 @@ public class CMDIValidatorFactory {
         if (cacheDirectory == null) {
             if (SystemUtils.IS_OS_WINDOWS &&
                     (SystemUtils.JAVA_IO_TMPDIR != null)) {
-                cacheDirectory = new File(SystemUtils.JAVA_IO_TMPDIR,
-                        "cmdi-validator");
+                cacheDirectory =
+                        new File(SystemUtils.JAVA_IO_TMPDIR, "cmdi-validator");
             } else if (SystemUtils.IS_OS_UNIX &&
                     (SystemUtils.USER_HOME != null)) {
-                cacheDirectory = new File(SystemUtils.USER_HOME,
-                        ".cmdi-validator");
+                cacheDirectory =
+                        new File(SystemUtils.USER_HOME, ".cmdi-validator");
             }
             if (cacheDirectory != null) {
                 if (!cacheDirectory.exists()) {
@@ -153,47 +155,40 @@ public class CMDIValidatorFactory {
             logger.debug("disabling Schematron validator");
             this.schematronValidator = null;
         }
+    }
 
-        /*
-         * store pluginFactories
-         */
-        if ((pluginFactories != null) && !pluginFactories.isEmpty()) {
-            this.pluginFactories = pluginFactories;
-        } else {
-            this.pluginFactories = null;
+
+    public void registerExtension(CMDIValidatorExtension extension)
+            throws CMDIValidatorInitException {
+        if (extension == null) {
+            throw new NullPointerException("extension == null");
         }
+        extension.initalize(processor);
+        extensions.add(extension);
     }
 
 
     public CMDIValidator newValidator() throws CMDIValidatorInitException {
-        List<CMDIValidationPlugin> plugins = null;
-        if (pluginFactories != null) {
-            plugins = new ArrayList<CMDIValidationPlugin>(pluginFactories.size());
-            for (CMDIValidationPluginFactory pluginFactory : pluginFactories) {
-                plugins.add(pluginFactory.newInstance(processor));
-            }
-        }
-
+        List<CMDIValidatorExtension> ext = !extensions.isEmpty()
+                ? Collections.unmodifiableList(extensions)
+                : null;
         return new CMDIValidator(processor, schemaLoader,
-                schematronValidator, plugins);
+                schematronValidator, ext);
     }
 
 
     public static CMDIValidatorFactory newInstance(File cacheDircetory,
             File schematronSchemaFile,
-            boolean disableSchematron,
-            List<CMDIValidationPluginFactory> pluginFactories)
-            throws CMDIValidatorInitException {
+            boolean disableSchematron) throws CMDIValidatorInitException {
         return new CMDIValidatorFactory(cacheDircetory,
                 schematronSchemaFile,
-                disableSchematron,
-                pluginFactories);
+                disableSchematron);
     }
 
 
     public static CMDIValidatorFactory newInstance()
             throws CMDIValidatorInitException {
-        return new CMDIValidatorFactory(null, null, false, null);
+        return new CMDIValidatorFactory(null, null, false);
     }
 
 

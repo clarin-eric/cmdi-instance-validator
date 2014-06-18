@@ -83,14 +83,14 @@ public final class CMDIValidator {
     private final XsltTransformer schematronValidator;
     private final XML11Configuration config;
     private final DocumentBuilder builder;
-    private final List<CMDIValidationPlugin> plugins;
+    private final List<CMDIValidatorExtension> extensions;
     private final CMDIValidatorResultImpl result;
 
 
     CMDIValidator(final Processor processor,
             final SchemaLoader schemaLoader,
             XsltExecutable schematronExecutable,
-            List<CMDIValidationPlugin> plugins)
+            List<CMDIValidatorExtension> extensions)
             throws CMDIValidatorInitException {
         if (processor == null) {
             throw new NullPointerException("processor == null");
@@ -218,13 +218,9 @@ public final class CMDIValidator {
                     WhitespaceStrippingPolicy.IGNORABLE);
 
             /*
-             * initialize plugins
+             * extensions
              */
-            if ((plugins != null) && !plugins.isEmpty()) {
-                this.plugins = plugins;
-            } else {
-                this.plugins = null;
-            }
+            this.extensions = extensions;
 
             /*
              * initialize other stuff
@@ -259,11 +255,11 @@ public final class CMDIValidator {
                 }
 
                 /*
-                 * step 3: run plugins, if any
+                 * step 3: run extensions, if any
                  */
-                if (plugins != null) {
-                    for (CMDIValidationPlugin plugin : plugins) {
-                        plugin.validate(document, result);
+                if (extensions != null) {
+                    for (CMDIValidatorExtension extension : extensions) {
+                        extension.validate(document, result);
                     }
                 }
             } else {

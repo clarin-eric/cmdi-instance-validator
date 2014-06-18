@@ -1,9 +1,10 @@
-package eu.clarin.cmdi.validator.plugins;
+package eu.clarin.cmdi.validator.utils;
 
 import java.io.IOException;
 import java.net.URI;
 import java.util.HashSet;
 import java.util.Set;
+
 import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
 import org.apache.http.client.HttpClient;
@@ -17,10 +18,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import eu.clarin.cmdi.validator.CMDIValidatorException;
-import eu.clarin.cmdi.validator.utils.LRUCache;
 
 public class HandleResolver {
-    private static final Logger logger = LoggerFactory.getLogger(HandleResolver.class);
+    private static final Logger logger =
+            LoggerFactory.getLogger(HandleResolver.class);
     public final int ERROR   = -1;
     private final LRUCache<URI, Integer> cache =
             new LRUCache<URI, Integer>(16 * 1024);
@@ -28,10 +29,6 @@ public class HandleResolver {
     private final Object waiter = new Object();
     private long cacheHits   = 0;
     private long cacheMisses = 0;
-
-    public HandleResolver() {
-        this(Runtime.getRuntime().availableProcessors());
-    }
 
 
     public HandleResolver(final int threads) {
@@ -73,7 +70,6 @@ public class HandleResolver {
                     }
                 } // synchronized (pending)
             } // synchronized (cache)
-
 
             // either resolve in this thread of wait for pending resolve result
             if (doResolve) {

@@ -6,7 +6,7 @@ import java.util.LinkedList;
 import java.util.List;
 
 
-public final class CMDIValidatorResultImpl implements CMDIValidatorResult {
+final class CMDIValidatorResultImpl implements CMDIValidatorWriteableResult {
     private static class MessageImpl implements CMDIValidatorResult.Message {
         private Severity severity;
         private int line;
@@ -146,21 +146,25 @@ public final class CMDIValidatorResultImpl implements CMDIValidatorResult {
     }
 
 
+    @Override
     public void reportInfo(int line, int col, String message) {
         reportInfo(line, col, message, null);
     }
 
 
+    @Override
     public void reportInfo(int line, int col, String message, Throwable cause) {
         entries.add(new MessageImpl(Severity.INFO, line, col, message, cause));
     }
 
 
+    @Override
     public void reportWarning(int line, int col, String message) {
         reportWarning(line, col, message, null);
     }
 
 
+    @Override
     public void reportWarning(int line, int col, String message, Throwable cause) {
         switch (highestSeverity) {
         case WARNING:
@@ -174,11 +178,13 @@ public final class CMDIValidatorResultImpl implements CMDIValidatorResult {
     }
 
 
+    @Override
     public void reportError(int line, int col, String message) {
         reportError(line, col, message, null);
     }
 
 
+    @Override
     public void reportError(int line, int col, String message, Throwable cause) {
         switch (highestSeverity) {
         case ERROR:

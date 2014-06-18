@@ -4,8 +4,6 @@ import humanize.Humanize;
 
 import java.io.File;
 import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
@@ -24,7 +22,6 @@ import org.apache.commons.cli.ParseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import eu.clarin.cmdi.validator.CMDIValidationPluginFactory;
 import eu.clarin.cmdi.validator.CMDIValidator;
 import eu.clarin.cmdi.validator.CMDIValidatorEngine;
 import eu.clarin.cmdi.validator.CMDIValidatorException;
@@ -35,7 +32,7 @@ import eu.clarin.cmdi.validator.CMDIValidatorJobHandlerAdapter;
 import eu.clarin.cmdi.validator.CMDIValidatorResult;
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Message;
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Severity;
-import eu.clarin.cmdi.validator.plugins.CheckPidPluginFactory;
+import eu.clarin.cmdi.validator.extensions.CheckHandlesExtension;
 
 
 public class CMDIValidatorTool {
@@ -180,18 +177,17 @@ public class CMDIValidatorTool {
                     logger.info("using Schematron schema from file: {}", schematronFile);
                 }
 
-                List<CMDIValidationPluginFactory> pluginFactories =
-                        new ArrayList<CMDIValidationPluginFactory>();
-                if (checkPids) {
-                    logger.info("performing PID checking");
-                    pluginFactories.add(new CheckPidPluginFactory());
-                }
-
                 final CMDIValidatorFactory factory =
                         CMDIValidatorFactory.newInstance(schemaCacheDir,
                                 schematronFile,
-                                disableSchematron,
-                                pluginFactories);
+                                disableSchematron);
+
+                if (checkPids) {
+                    logger.info("performing PID checking");
+                    factory.registerExtension(
+                            new CheckHandlesExtension(threadCount, true));
+                }
+
 
                 /*
                  * process archive
