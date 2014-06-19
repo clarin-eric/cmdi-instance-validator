@@ -41,13 +41,13 @@ public class CMDIValidatorFactory {
             new ArrayList<CMDIValidatorExtension>();
 
 
-    private CMDIValidatorFactory(File cacheDirectory,
-            File schematronSchemaFile, boolean disableSchematron)
+    private CMDIValidatorFactory(final CMDIValidatorFactoryConfig config)
             throws CMDIValidatorInitException {
         /*
          * initialize custom schema loader
          */
         logger.debug("initializing schema loader ...");
+        File cacheDirectory = config.getSchemaCacheDirectory();
         if (cacheDirectory == null) {
             if (SystemUtils.IS_OS_WINDOWS &&
                     (SystemUtils.JAVA_IO_TMPDIR != null)) {
@@ -97,10 +97,11 @@ public class CMDIValidatorFactory {
         /*
          * initialize Schematron validator
          */
-        if (!disableSchematron) {
+        if (!config.isSchematronDisabled()) {
             logger.debug("initializing Schematron validator ...");
 
             URL schema = null;
+            File schematronSchemaFile = config.getSchematronSchemaFile();
             if (schematronSchemaFile != null) {
                 if (!schematronSchemaFile.exists()) {
                     throw new CMDIValidatorInitException("file '" +
@@ -146,7 +147,7 @@ public class CMDIValidatorFactory {
                 stage1.transform();
                 schematronValidator =
                         compiler.compile(destination.getXdmNode().asSource());
-                logger.debug("Schematron validator successfully initializied");
+                logger.debug("Schematron validator successfully initialized");
             } catch (SaxonApiException e) {
                 throw new CMDIValidatorInitException(
                         "error compiling schematron rules", e);
@@ -177,18 +178,16 @@ public class CMDIValidatorFactory {
     }
 
 
-    public static CMDIValidatorFactory newInstance(File cacheDircetory,
-            File schematronSchemaFile,
-            boolean disableSchematron) throws CMDIValidatorInitException {
-        return new CMDIValidatorFactory(cacheDircetory,
-                schematronSchemaFile,
-                disableSchematron);
+    public static CMDIValidatorFactory newInstance(
+            CMDIValidatorFactoryConfig config)
+            throws CMDIValidatorInitException {
+        return new CMDIValidatorFactory(config);
     }
 
 
     public static CMDIValidatorFactory newInstance()
             throws CMDIValidatorInitException {
-        return new CMDIValidatorFactory(null, null, false);
+        return newInstance(new CMDIValidatorFactoryConfig());
     }
 
 

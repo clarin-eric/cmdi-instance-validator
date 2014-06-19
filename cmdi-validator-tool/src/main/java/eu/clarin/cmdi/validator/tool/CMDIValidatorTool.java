@@ -26,6 +26,7 @@ import eu.clarin.cmdi.validator.CMDIValidator;
 import eu.clarin.cmdi.validator.CMDIValidatorEngine;
 import eu.clarin.cmdi.validator.CMDIValidatorException;
 import eu.clarin.cmdi.validator.CMDIValidatorFactory;
+import eu.clarin.cmdi.validator.CMDIValidatorFactoryConfig;
 import eu.clarin.cmdi.validator.CMDIValidatorInitException;
 import eu.clarin.cmdi.validator.CMDIValidatorJob;
 import eu.clarin.cmdi.validator.CMDIValidatorJobHandlerAdapter;
@@ -177,10 +178,14 @@ public class CMDIValidatorTool {
                     logger.info("using Schematron schema from file: {}", schematronFile);
                 }
 
+                final CMDIValidatorFactoryConfig config =
+                        new CMDIValidatorFactoryConfig.Builder()
+                        .schemaCacheDirectory(schemaCacheDir)
+                        .schematronSchemaFile(schematronFile)
+                        .schematronDisabled(disableSchematron)
+                        .build();
                 final CMDIValidatorFactory factory =
-                        CMDIValidatorFactory.newInstance(schemaCacheDir,
-                                schematronFile,
-                                disableSchematron);
+                        CMDIValidatorFactory.newInstance(config);
 
                 if (checkPids) {
                     logger.info("performing PID checking");
