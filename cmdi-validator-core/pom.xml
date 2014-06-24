@@ -10,6 +10,20 @@
     <artifactId>cmdi-validator-core</artifactId>
     <packaging>jar</packaging>
 
+    <name>CMDI Validator Framework - Core Library</name>
+    <description>The core library of the CMDI instance validation framework.</description>
+    <organization>
+        <name>CLARIN EU</name>
+        <url>http://www.clarin.eu</url>
+    </organization>
+    <licenses>
+        <license>
+            <name>GNU GENERAL PUBLIC LICENSE, Version 3</name>
+            <url>http://www.gnu.org/licenses/gpl-3.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <properties>
         <!-- versions of dependencies -->
         <truevfs.version>0.10.6</truevfs.version>
