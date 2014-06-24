@@ -1,21 +1,21 @@
 package eu.clarin.cmdi.validator;
 
 
-public interface CMDIValidatorJobHandler {
+public interface CMDIValidatorHandler {
 
     public void onJobStarted()
             throws CMDIValidatorException;
 
 
-    public void onJobFinished(boolean wasCanceled)
+    public void onJobFinished(final CMDIValidator.Result result)
             throws CMDIValidatorException;
 
 
-    public void onValidationSuccess(CMDIValidatorResult result)
+    public void onValidationSuccess(final CMDIValidatorResult result)
             throws CMDIValidatorException;
 
 
-    public void onValidationFailure(CMDIValidatorResult result)
+    public void onValidationFailure(final CMDIValidatorResult result)
             throws CMDIValidatorException;
 
 } // interface CMDIValidatorJobHandler

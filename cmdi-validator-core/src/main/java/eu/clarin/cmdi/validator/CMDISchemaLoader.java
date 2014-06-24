@@ -24,17 +24,17 @@ import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-final class SchemaLoader {
-    static final long DISABLE_CACHE_AGING = -1;
+public final class CMDISchemaLoader {
+    public static final long DISABLE_CACHE_AGING = -1;
     private static final Logger logger =
-            LoggerFactory.getLogger(SchemaLoader.class);
+            LoggerFactory.getLogger(CMDISchemaLoader.class);
     private static final String XML_XSD_RESSOURCE = "/xml.xsd";
     private final File cacheDirectory;
     private final long maxCacheAge;
     private final HttpClient httpClient;
 
 
-    SchemaLoader(File cacheDirectory, long maxCacheAge) {
+    public CMDISchemaLoader(File cacheDirectory, long maxCacheAge) {
         if (cacheDirectory == null) {
             throw new NullPointerException("cacheDirectory == null");
         }
@@ -42,8 +42,8 @@ final class SchemaLoader {
             throw new IllegalArgumentException("maxCacheAge < -1");
         }
         this.cacheDirectory = cacheDirectory;
-        this.maxCacheAge = maxCacheAge;
-        this.httpClient = new DefaultHttpClient();
+        this.maxCacheAge    = maxCacheAge;
+        this.httpClient     = new DefaultHttpClient();
 
         final HttpParams params = this.httpClient.getParams();
         params.setParameter(CoreProtocolPNames.USER_AGENT,
@@ -51,6 +51,11 @@ final class SchemaLoader {
         params.setBooleanParameter(ClientPNames.HANDLE_REDIRECTS, Boolean.TRUE);
         params.setBooleanParameter(ClientPNames.ALLOW_CIRCULAR_REDIRECTS, true);
         params.setIntParameter(ClientPNames.MAX_REDIRECTS, 16);
+    }
+
+
+    public CMDISchemaLoader(File cacheDirectory) {
+        this(cacheDirectory, DISABLE_CACHE_AGING);
     }
 
 
@@ -63,37 +68,35 @@ final class SchemaLoader {
             throw new NullPointerException("schemaLocation == null");
         }
 
-        logger.debug("loading schema: targetNamespace={}, location={}",
+        logger.trace("loading schema: targetNamespace={}, location={}",
                 targetNamespace, schemaLocation);
         InputStream stream = null;
         if (XMLConstants.XML_NS_URI.equalsIgnoreCase(targetNamespace)) {
             stream = this.getClass().getResourceAsStream(XML_XSD_RESSOURCE);
             if (stream != null) {
-                logger.debug("using bundled schema for '{}'", schemaLocation);
+                logger.trace("using bundled schema for '{}'", schemaLocation);
                 return stream;
             }
             logger.warn("unable to load bundled schema for '{}', " +
                     "falling back to download.", schemaLocation);
         }
 
-        final String key = stripBadChars(schemaLocation);
-
         // fall back to file cache ...
-        final File cacheFile = makeCacheFile(key);
+        final File cacheFile = makeCacheFile(schemaLocation);
         if (cacheFile.exists()) {
             final long age =
                     System.currentTimeMillis() - cacheFile.lastModified();
             if ((maxCacheAge != DISABLE_CACHE_AGING) && (age > maxCacheAge)) {
-                logger.debug("-> cached file '{}' expired", cacheFile);
+                logger.trace("-> cached file '{}' expired", cacheFile);
                 cacheFile.delete();
             } else {
-                logger.debug("-> from file cache");
+                logger.trace("-> from file cache");
                 return new FileInputStream(cacheFile);
             }
         }
 
         try {
-            logger.debug("-> downloading schema from '{}'", schemaLocation);
+            logger.debug("downloading schema from '{}'", schemaLocation);
             final URI uri = new URI(schemaLocation);
             final HttpResponse response = executeRequest(uri);
             final HttpEntity entity = response.getEntity();
@@ -133,19 +136,16 @@ final class SchemaLoader {
     }
 
 
-    private File makeCacheFile(String key) {
-        return new File(cacheDirectory, key + ".xsd");
-    }
-
-
-    private static String stripBadChars(String uri) {
+    private File makeCacheFile(String schemaLocation) {
         final StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < uri.length(); i++) {
-            final char c = uri.charAt(i);
+        for (int i = 0; i < schemaLocation.length(); i++) {
+            final char c = schemaLocation.charAt(i);
             switch (c) {
+            case '.':
+                /* FALL-THROUGH */
             case ':':
                 /* FALL-THROUGH */
-            case '/':
+            case ';':
                 /* FALL-THROUGH */
             case '?':
                 /* FALL-THROUGH */
@@ -153,13 +153,11 @@ final class SchemaLoader {
                 /* FALL-THROUGH */
             case '=':
                 /* FALL-THROUGH */
-            case '.':
-                /* FALL-THROUGH */
-            case ';':
-                /* FALL-THROUGH */
             case '"':
                 /* FALL-THROUGH */
             case '\'':
+                /* FALL-THROUGH */
+            case '/':
                 /* FALL-THROUGH */
             case '\\':
                 sb.append('_');
@@ -167,8 +165,9 @@ final class SchemaLoader {
             default:
                 sb.append(c);
             }
-        }
-        return sb.toString();
+        } // for
+        sb.append(".xsd");
+        return new File(cacheDirectory, sb.toString());
     }
 
 
@@ -176,7 +175,7 @@ final class SchemaLoader {
         HttpGet request = null;
         HttpResponse response = null;
         try {
-            logger.debug("submitting HTTP request: {}", uri.toString());
+            logger.trace("submitting HTTP request: {}", uri.toString());
             request = new HttpGet(uri);
             response = httpClient.execute(request);
             StatusLine status = response.getStatusLine();
@@ -211,4 +210,4 @@ final class SchemaLoader {
         }
     }
 
-} // class SchemaLoader
+} // class CMDISchemaLoader

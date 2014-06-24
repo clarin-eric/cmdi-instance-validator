@@ -1,7 +1,7 @@
 package eu.clarin.cmdi.validator;
 
 
-public class CMDIValidatorJobHandlerAdapter implements CMDIValidatorJobHandler {
+public class CMDIValidatorHandlerAdapter implements CMDIValidatorHandler {
 
     @Override
     public void onJobStarted() throws CMDIValidatorException {
@@ -9,7 +9,7 @@ public class CMDIValidatorJobHandlerAdapter implements CMDIValidatorJobHandler {
 
 
     @Override
-    public void onJobFinished(boolean wasCanceled)
+    public void onJobFinished(final CMDIValidator.Result result)
             throws CMDIValidatorException {
     }
 

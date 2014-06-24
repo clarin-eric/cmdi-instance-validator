@@ -6,7 +6,6 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
-
 import net.java.truevfs.access.TFile;
 import net.java.truevfs.access.TVFS;
 import net.java.truevfs.kernel.spec.FsSyncException;
@@ -22,14 +21,12 @@ import org.apache.commons.cli.ParseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import eu.clarin.cmdi.validator.ThreadedCMDIValidatorProcessor;
 import eu.clarin.cmdi.validator.CMDIValidator;
-import eu.clarin.cmdi.validator.CMDIValidatorEngine;
+import eu.clarin.cmdi.validator.CMDIValidatorConfig;
 import eu.clarin.cmdi.validator.CMDIValidatorException;
-import eu.clarin.cmdi.validator.CMDIValidatorFactory;
-import eu.clarin.cmdi.validator.CMDIValidatorFactoryConfig;
 import eu.clarin.cmdi.validator.CMDIValidatorInitException;
-import eu.clarin.cmdi.validator.CMDIValidatorJob;
-import eu.clarin.cmdi.validator.CMDIValidatorJobHandlerAdapter;
+import eu.clarin.cmdi.validator.CMDIValidatorHandlerAdapter;
 import eu.clarin.cmdi.validator.CMDIValidatorResult;
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Message;
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Severity;
@@ -168,9 +165,6 @@ public class CMDIValidatorTool {
 
             TFile archive = null;
             try {
-                /*
-                 * initialize CMDIValidatorFactory
-                 */
                 if (schemaCacheDir != null) {
                     logger.info("using schema cache directory: {}", schemaCacheDir);
                 }
@@ -178,27 +172,10 @@ public class CMDIValidatorTool {
                     logger.info("using Schematron schema from file: {}", schematronFile);
                 }
 
-                final CMDIValidatorFactoryConfig config =
-                        new CMDIValidatorFactoryConfig.Builder()
-                        .schemaCacheDirectory(schemaCacheDir)
-                        .schematronSchemaFile(schematronFile)
-                        .schematronDisabled(disableSchematron)
-                        .build();
-                final CMDIValidatorFactory factory =
-                        CMDIValidatorFactory.newInstance(config);
-
-                if (checkPids) {
-                    logger.info("performing PID checking");
-                    factory.registerExtension(
-                            new CheckHandlesExtension(threadCount, true));
-                }
-
-
                 /*
                  * process archive
                  */
                 archive = new TFile(remaining[0]);
-
                 if (archive.exists()) {
                     if (archive.isArchive()) {
                         logger.info("reading archive '{}'", archive);
@@ -216,16 +193,33 @@ public class CMDIValidatorTool {
                       logger.debug("using {} threads", threadCount);
                     }
 
-                    final CMDIValidatorEngine engine =
-                            new CMDIValidatorEngine(factory, threadCount);
-                    final JobHandler handler = new JobHandler(verbose);
-                    try {
-                        final CMDIValidatorJob job =
-                                new CMDIValidatorJob(archive, handler);
 
-                        engine.start();
-                        logger.debug("submitting batch validation job ...");
-                        engine.submit(job);
+                    final ValidationHandler handler = new ValidationHandler(verbose);
+
+                    final CMDIValidatorConfig.Builder builder =
+                            new CMDIValidatorConfig.Builder(archive, handler);
+                    if (schemaCacheDir != null) {
+                        builder.schemaCacheDirectory(schemaCacheDir);
+                    }
+                    if (schematronFile != null) {
+                        builder.schematronSchemaFile(schematronFile);
+                    }
+                    if (disableSchematron) {
+                        builder.disableSchematron();
+                    }
+                    if (checkPids) {
+                        logger.info("performing PID checking");
+                        builder.extension(
+                                new CheckHandlesExtension(threadCount, true));
+                    }
+
+                    final ThreadedCMDIValidatorProcessor processor =
+                            new ThreadedCMDIValidatorProcessor(threadCount);
+                    processor.start();
+                    try {
+                        final CMDIValidator validator =
+                                new CMDIValidator(builder.build());
+                        processor.process(validator);
 
                         /*
                          * Wait until validation is done and report about
@@ -271,7 +265,7 @@ public class CMDIValidatorTool {
                             }
                         } // for (;;)
                     } finally {
-                        engine.shutdown();
+                        processor.shutdown();
                     }
 
                     int fps = -1;
@@ -411,7 +405,7 @@ public class CMDIValidatorTool {
     }
 
 
-    private static class JobHandler extends CMDIValidatorJobHandlerAdapter {
+    private static class ValidationHandler extends CMDIValidatorHandlerAdapter {
         private final boolean verbose;
         private long started     = System.currentTimeMillis();
         private long finished    = -1;
@@ -422,7 +416,7 @@ public class CMDIValidatorTool {
         private final Object waiter = new Object();
 
 
-        private JobHandler(boolean verbose) {
+        private ValidationHandler(boolean verbose) {
             this.verbose = verbose;
         }
 
@@ -482,20 +476,39 @@ public class CMDIValidatorTool {
 
 
         @Override
-        public void onJobFinished(boolean wasCancled) {
-            finished = System.currentTimeMillis();
-            synchronized (waiter) {
-                isCompleted = true;
-                waiter.notifyAll();
-            } // synchronized (waiter)
-            if (wasCancled) {
-                logger.info("processing was canceled ...");
-            }
+        public void onJobStarted() throws CMDIValidatorException {
+            logger.debug("validation process started");
         }
 
 
         @Override
-        public void onValidationSuccess(CMDIValidatorResult result) {
+        public void onJobFinished(final CMDIValidator.Result result)
+                throws CMDIValidatorException {
+            finished = System.currentTimeMillis();
+            switch (result) {
+            case OK:
+                logger.debug("validation process finished successfully");
+                break;
+            case ABORTED:
+                logger.info("processing was aborted");
+                break;
+            case ERROR:
+                logger.debug("validation process yielded an error");
+                break;
+            default:
+                logger.debug("unknown result: " + result);
+            } // switch
+
+            synchronized (waiter) {
+                isCompleted = true;
+                waiter.notifyAll();
+            } // synchronized (waiter)
+        }
+
+
+        @Override
+        public void onValidationSuccess(final CMDIValidatorResult result)
+                throws CMDIValidatorException {
             final File file = result.getFile();
             synchronized (this) {
                 filesTotal++;
@@ -533,13 +546,13 @@ public class CMDIValidatorTool {
                     }
                 }
             } else {
-                logger.debug("file '{}' is valid", file, result.getFile());
+                logger.debug("file '{}' is valid", file);
             }
         }
 
 
         @Override
-        public void onValidationFailure(CMDIValidatorResult result) {
+        public void onValidationFailure(final CMDIValidatorResult result) {
             final File file = result.getFile();
             synchronized (this) {
                 filesTotal++;
