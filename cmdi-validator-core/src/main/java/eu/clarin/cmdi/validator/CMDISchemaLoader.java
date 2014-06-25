@@ -21,22 +21,31 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.channels.FileLock;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
 import javax.xml.XMLConstants;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.StatusLine;
-import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.CookieSpecs;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.params.ClientPNames;
-import org.apache.http.client.utils.HttpClientUtils;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.params.CoreProtocolPNames;
-import org.apache.http.params.HttpParams;
-import org.apache.http.util.EntityUtils;
+import org.apache.http.config.SocketConfig;
+import org.apache.http.conn.ConnectionKeepAliveStrategy;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.protocol.BasicHttpContext;
+import org.apache.http.protocol.HttpContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,29 +53,40 @@ public final class CMDISchemaLoader {
     public static final long DISABLE_CACHE_AGING = -1;
     private static final Logger logger =
             LoggerFactory.getLogger(CMDISchemaLoader.class);
+    private static final String USER_AGENT =
+            "CMDI-Validator-SchemaLoader/" + Version.getVersion();
     private static final String XML_XSD_RESSOURCE = "/xml.xsd";
+    private static final String EXTENSION_XSD   = "xsd";
+    private static final String EXTENSION_ERROR = "error";
     private final File cacheDirectory;
     private final long maxCacheAge;
-    private final HttpClient httpClient;
+    private final long maxNegativeCacheAge;
+    private final CloseableHttpClient httpClient;
+    private final Set<String> pending = new HashSet<String>(128);
+    private final Object guard = new Object();
+    private final Object waiter = new Object();
 
 
-    public CMDISchemaLoader(File cacheDirectory, long maxCacheAge) {
+    public CMDISchemaLoader(File cacheDirectory, long maxCacheAge,
+            long maxNegativeCacheAge) {
         if (cacheDirectory == null) {
             throw new NullPointerException("cacheDirectory == null");
         }
         if (maxCacheAge < -1) {
             throw new IllegalArgumentException("maxCacheAge < -1");
         }
-        this.cacheDirectory = cacheDirectory;
-        this.maxCacheAge    = maxCacheAge;
-        this.httpClient     = new DefaultHttpClient();
+        if (maxNegativeCacheAge < -1) {
+            throw new IllegalArgumentException("maxNegativeCacheAge < -1");
+        }
+        this.cacheDirectory      = cacheDirectory;
+        this.maxCacheAge         = maxCacheAge;
+        this.maxNegativeCacheAge = maxNegativeCacheAge;
+        this.httpClient          = createHttpClient(2500, 5000);
+    }
 
-        final HttpParams params = this.httpClient.getParams();
-        params.setParameter(CoreProtocolPNames.USER_AGENT,
-                this.getClass().getPackage().getName() + "/0.0.1");
-        params.setBooleanParameter(ClientPNames.HANDLE_REDIRECTS, Boolean.TRUE);
-        params.setBooleanParameter(ClientPNames.ALLOW_CIRCULAR_REDIRECTS, true);
-        params.setIntParameter(ClientPNames.MAX_REDIRECTS, 16);
+
+    public CMDISchemaLoader(File cacheDirectory, long maxCacheAge) {
+        this(cacheDirectory, maxCacheAge, TimeUnit.HOURS.toMillis(1));
     }
 
 
@@ -75,7 +95,7 @@ public final class CMDISchemaLoader {
     }
 
 
-    public synchronized InputStream loadSchemaFile(String targetNamespace,
+    public InputStream loadSchemaFile(String targetNamespace,
             String schemaLocation) throws IOException {
         if (targetNamespace == null) {
             throw new NullPointerException("targetNamespace == null");
@@ -98,52 +118,145 @@ public final class CMDISchemaLoader {
         }
 
         // fall back to file cache ...
-        final File cacheFile = makeCacheFile(schemaLocation);
-        if (cacheFile.exists()) {
-            final long age =
-                    System.currentTimeMillis() - cacheFile.lastModified();
-            if ((maxCacheAge != DISABLE_CACHE_AGING) && (age > maxCacheAge)) {
-                logger.trace("-> cached file '{}' expired", cacheFile);
-                cacheFile.delete();
-            } else {
-                logger.trace("-> from file cache");
-                return new FileInputStream(cacheFile);
-            }
-        }
+        final File cacheDataFile =
+                makeFile(schemaLocation, EXTENSION_XSD);
+        final File cacheErrorFile =
+                makeFile(schemaLocation, EXTENSION_ERROR);
 
+        for (;;) {
+            boolean doDownload = false;
+
+            synchronized (guard) {
+                /*
+                 * check, if an earlier attempt to download the schema failed.
+                 */
+                if (cacheErrorFile.exists()) {
+                    if (isExpired(cacheErrorFile, maxNegativeCacheAge)) {
+                        logger.trace("-> error file '{}' expired",
+                                cacheErrorFile);
+                        cacheErrorFile.delete();
+                    } else {
+                        throw new IOException("cached error condition detected");
+                    }
+                }
+
+                if (cacheDataFile.exists()) {
+                    if (isExpired(cacheDataFile, maxCacheAge)) {
+                        logger.debug("cached entry for '{}' has expired",
+                                schemaLocation);
+                        cacheDataFile.delete();
+                    } else {
+                        logger.trace("-> from file cache");
+                        return new FileInputStream(cacheDataFile);
+                    }
+                }
+
+                synchronized (pending) {
+                    if (!pending.contains(schemaLocation)) {
+                        doDownload = true;
+                        pending.add(schemaLocation);
+                    }
+                } // synchronized (pending)
+            } // synchronized (guard)
+
+            // either download in this thread of wait for pending download
+            if (doDownload) {
+                boolean failed = false;
+                try {
+                    download(cacheDataFile, schemaLocation);
+                    return new FileInputStream(cacheDataFile);
+                } catch (IOException e) {
+                    failed = true;
+                    throw e;
+                } finally {
+                    synchronized (guard) {
+                        if (failed) {
+                            if (cacheErrorFile.exists()) {
+                                cacheErrorFile.setLastModified(
+                                        System.currentTimeMillis());
+                            } else {
+                                cacheErrorFile.createNewFile();
+                            }
+                        }
+                        synchronized (pending) {
+                            pending.remove(schemaLocation);
+                            synchronized (waiter) {
+                                waiter.notifyAll();
+                            } // synchronized (waiter)
+                        }// synchronized (pending)
+                    } // synchronized (guard)
+                }
+            } else {
+                try {
+                    synchronized (waiter) {
+                        waiter.wait();
+                    } // synchronized (waiter)
+                } catch (InterruptedException e) {
+                    throw new InterruptedIOException(
+                            "interrupted while waiting for download");
+                }
+            }
+        } // for
+    }
+
+
+    private void download(File cacheFile, String schemaLocation)
+            throws IOException {
         try {
             logger.debug("downloading schema from '{}'", schemaLocation);
             final URI uri = new URI(schemaLocation);
-            final HttpResponse response = executeRequest(uri);
-            final HttpEntity entity = response.getEntity();
-            if (entity == null) {
-                throw new IOException("the request returned no message body");
-            }
-
+            final HttpGet request = new HttpGet(uri);
             try {
-                final InputStream in = entity.getContent();
+                logger.trace("submitting HTTP request: {}", uri.toString());
+                final CloseableHttpResponse response =
+                        httpClient.execute(request, new BasicHttpContext());
+                try {
+                    final StatusLine status = response.getStatusLine();
+                    if (status.getStatusCode() == HttpStatus.SC_OK) {
+                        final HttpEntity entity = response.getEntity();
+                        if (entity == null) {
+                            throw new IOException(
+                                    "request returned no message body");
+                        }
 
-                final FileOutputStream out =
-                        new FileOutputStream(cacheFile);
-                int read;
-                final byte[] buffer = new byte[4096];
-                while ((read = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, read);
+                        FileOutputStream out = null;
+                        try {
+                            out = new FileOutputStream(cacheFile);
+                            // use exclusive lock
+                            final FileLock lock = out.getChannel().lock();
+                            try {
+                                entity.writeTo(out);
+                                out.flush();
+                                out.getFD().sync();
+                            } finally {
+                                lock.release();
+                            }
+                        } finally {
+                            if (out != null) {
+                                out.close();
+                            }
+                        }
+                    } else {
+                        switch (status.getStatusCode()) {
+                        case HttpStatus.SC_NOT_FOUND:
+                            throw new IOException("not found: " + uri);
+                        default:
+                            throw new IOException("unexpected status: " +
+                                    status.getStatusCode());
+                        } // switch
+                    }
+                } catch (IOException e) {
+                    /* delete broken cache file */
+                    if (cacheFile != null) {
+                        cacheFile.delete();
+                    }
+                    throw e;
+                } finally {
+                    /* make sure to release allocated resources */
+                    response.close();
                 }
-                out.close();
-
-                return new FileInputStream(cacheFile);
-            } catch (IllegalStateException e) {
-                throw new IOException("error reading response", e);
-            } catch (IOException e) {
-                /* delete broken cache file */
-                if (cacheFile != null) {
-                    cacheFile.delete();
-                }
-                throw e;
             } finally {
-                /* make sure to release allocated resources */
-                HttpClientUtils.closeQuietly(response);
+                request.reset();
             }
         } catch (URISyntaxException e) {
             throw new IOException("schemaLocation uri is invalid: " +
@@ -152,7 +265,7 @@ public final class CMDISchemaLoader {
     }
 
 
-    private File makeCacheFile(String schemaLocation) {
+    private File makeFile(String schemaLocation, String extension) {
         final StringBuilder sb = new StringBuilder();
         for (int i = 0; i < schemaLocation.length(); i++) {
             final char c = schemaLocation.charAt(i);
@@ -182,48 +295,66 @@ public final class CMDISchemaLoader {
                 sb.append(c);
             }
         } // for
-        sb.append(".xsd");
+        sb.append(".").append(extension);
         return new File(cacheDirectory, sb.toString());
     }
 
 
-    private HttpResponse executeRequest(URI uri) throws IOException {
-        HttpGet request = null;
-        HttpResponse response = null;
-        try {
-            logger.trace("submitting HTTP request: {}", uri.toString());
-            request = new HttpGet(uri);
-            response = httpClient.execute(request);
-            StatusLine status = response.getStatusLine();
-            if (status.getStatusCode() != HttpStatus.SC_OK) {
-                if (status.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
-                    throw new IOException("not found: " + uri);
-                } else {
-                    throw new IOException("unexpected status: " +
-                            status.getStatusCode());
-                }
-            }
-            return response;
-        } catch (IOException e) {
-            /*
-             * if an error occurred, make sure we are freeing up the resources
-             * we've used
-             */
-            if (response != null) {
-                try {
-                    EntityUtils.consume(response.getEntity());
-                } catch (IOException ex) {
-                    /* IGNORE */
-                }
+    private CloseableHttpClient createHttpClient(int connectTimeout,
+            int socketTimeout) {
+        final PoolingHttpClientConnectionManager manager =
+                new PoolingHttpClientConnectionManager();
+        manager.setDefaultMaxPerRoute(8);
+        manager.setMaxTotal(128);
 
-                /* make sure to release allocated resources */
-                HttpClientUtils.closeQuietly(response);
+        final SocketConfig socketConfig = SocketConfig.custom()
+                .setSoReuseAddress(true)
+                .setSoLinger(0)
+                .build();
+
+        final RequestConfig requestConfig = RequestConfig.custom()
+                .setAuthenticationEnabled(false)
+                .setRedirectsEnabled(true)
+                .setMaxRedirects(4)
+                .setCircularRedirectsAllowed(false)
+                .setCookieSpec(CookieSpecs.IGNORE_COOKIES)
+                .setConnectTimeout(connectTimeout)
+                .setSocketTimeout(socketTimeout)
+                .setConnectionRequestTimeout(0) /* infinite */
+                .setStaleConnectionCheckEnabled(false)
+                .build();
+
+        final ConnectionKeepAliveStrategy keepAliveStrategy =
+                new ConnectionKeepAliveStrategy() {
+            @Override
+            public long getKeepAliveDuration(final HttpResponse response,
+                    final HttpContext context) {
+                return 60000;
             }
-            if (request != null) {
-                request.abort();
-            }
-            throw e;
+        };
+
+        return HttpClients.custom()
+                .setUserAgent(USER_AGENT)
+                .setConnectionManager(manager)
+                .setDefaultSocketConfig(socketConfig)
+                .setDefaultRequestConfig(requestConfig)
+                .setKeepAliveStrategy(keepAliveStrategy)
+                .build();
+    }
+
+
+    private static boolean isExpired(File file, long maxAge) {
+        if (maxAge != DISABLE_CACHE_AGING) {
+            return (System.currentTimeMillis() - file.lastModified()) >= maxAge;
+        } else {
+            return false;
         }
+    }
+
+
+    @Override
+    protected void finalize() throws Throwable {
+        httpClient.close();
     }
 
 } // class CMDISchemaLoader

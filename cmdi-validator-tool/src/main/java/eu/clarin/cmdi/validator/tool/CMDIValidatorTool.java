@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+
 import net.java.truevfs.access.TFile;
 import net.java.truevfs.access.TVFS;
 import net.java.truevfs.kernel.spec.FsSyncException;
@@ -47,23 +48,24 @@ import eu.clarin.cmdi.validator.CMDIValidatorResult;
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Message;
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Severity;
 import eu.clarin.cmdi.validator.extensions.CheckHandlesExtension;
+import eu.clarin.cmdi.validator.utils.HandleResolver;
 
 
 public class CMDIValidatorTool {
-    private static final String PRG_NAME                = "cmdi-validator";
-    private static final long DEFAULT_PROGRESS_INTERVAL = 15000;
-    private static final Locale LOCALE                  = Locale.ENGLISH;
-    private static final char OPT_DEBUG                 = 'd';
-    private static final char OPT_QUIET                 = 'q';
-    private static final char OPT_VERBOSE               = 'v';
-    private static final char OPT_NO_PROGRESS           = 'P';
-    private static final char OPT_THREAD_COUNT          = 't';
-    private static final char OPT_NO_THREADS            = 'T';
-    private static final char OPT_NO_ESTIMATE           = 'E';
-    private static final char OPT_SCHEMA_CACHE_DIR      = 'c';
-    private static final char OPT_NO_SCHEMATRON         = 'S';
-    private static final char OPT_SCHEMATRON_FILE       = 's';
-    private static final char OPT_CHECK_PIDS            = 'p';
+    private static final String PRG_NAME                 = "cmdi-validator";
+    private static final long DEFAULT_PROGRESS_INTERVAL  = 15000;
+    private static final Locale LOCALE                   = Locale.ENGLISH;
+    private static final char OPT_DEBUG                  = 'd';
+    private static final char OPT_QUIET                  = 'q';
+    private static final char OPT_VERBOSE                = 'v';
+    private static final char OPT_THREAD_COUNT           = 't';
+    private static final char OPT_NO_THREADS             = 'T';
+    private static final char OPT_NO_ESTIMATE            = 'E';
+    private static final char OPT_SCHEMA_CACHE_DIR       = 'c';
+    private static final char OPT_NO_SCHEMATRON          = 'S';
+    private static final char OPT_SCHEMATRON_FILE        = 's';
+    private static final char OPT_CHECK_PIDS             = 'p';
+    private static final char OPT_CHECK_AND_RESOLVE_PIDS = 'P';
     private static final Logger logger =
             LoggerFactory.getLogger(CMDIValidatorTool.class);
     private static final org.apache.log4j.ConsoleAppender appender;
@@ -83,6 +85,7 @@ public class CMDIValidatorTool {
         boolean disableSchematron = false;
         File schematronFile       = null;
         boolean checkPids         = false;
+        boolean checkAndResolvePids   = false;
 
         /*
          * setup command line parser
@@ -102,8 +105,12 @@ public class CMDIValidatorTool {
                 throw new ParseException("The -v and -q switches are mutually exclusive");
             }
             if (line.hasOption(OPT_NO_SCHEMATRON) && line.hasOption(OPT_SCHEMATRON_FILE)) {
-                throw new ParseException("The -s and -T options are mutually exclusive");
+                throw new ParseException("The -s and -S options are mutually exclusive");
             }
+            if (line.hasOption(OPT_CHECK_PIDS) && line.hasOption(OPT_CHECK_AND_RESOLVE_PIDS)) {
+                throw new ParseException("The -p and -P options are mutually exclusive");
+            }
+
             // extract options
             if (line.hasOption(OPT_DEBUG)) {
                 debugging = true;
@@ -114,7 +121,7 @@ public class CMDIValidatorTool {
             if (line.hasOption(OPT_VERBOSE)) {
                 verbose = true;
             }
-            if (line.hasOption(OPT_NO_PROGRESS) || quiet) {
+            if (quiet) {
                 progressInterval = -1;
             }
             if (line.hasOption(OPT_THREAD_COUNT)) {
@@ -156,6 +163,9 @@ public class CMDIValidatorTool {
             }
             if (line.hasOption(OPT_CHECK_PIDS)) {
                 checkPids = true;
+            }
+            if (line.hasOption(OPT_CHECK_AND_RESOLVE_PIDS)) {
+                checkAndResolvePids = true;
             }
 
             final String[] remaining = line.getArgs();
@@ -223,10 +233,17 @@ public class CMDIValidatorTool {
                     if (disableSchematron) {
                         builder.disableSchematron();
                     }
-                    if (checkPids) {
-                        logger.info("performing PID checking");
-                        builder.extension(
-                                new CheckHandlesExtension(threadCount, true));
+
+                    CheckHandlesExtension checkHandleExtension = null;
+                    if (checkPids || checkAndResolvePids) {
+                        if (checkAndResolvePids) {
+                            logger.info("enabling PID validation (syntax and resolving)");
+                        } else {
+                            logger.info("enabling PID validation (syntax only)");
+                        }
+                        checkHandleExtension =
+                                new CheckHandlesExtension(checkAndResolvePids);
+                        builder.extension(checkHandleExtension);
                     }
 
                     final ThreadedCMDIValidatorProcessor processor =
@@ -277,6 +294,19 @@ public class CMDIValidatorTool {
                                             Humanize.duration(delta, LOCALE),
                                             ((fps != -1) ? fps : "N/A"),
                                             ((bps != -1) ? Humanize.binaryPrefix(bps, LOCALE) : "N/A MB"));
+                                }
+                                if (logger.isDebugEnabled()) {
+                                    if ((checkHandleExtension != null) &&
+                                            checkHandleExtension.isResolvingHandles()) {
+                                        final HandleResolver.Statistics stats =
+                                                checkHandleExtension.getStatistics();
+                                        logger.debug("[handle resolver stats] total requests: {}, running requests: {}, cache hits: {}, cache misses: {}, current cache size: {}",
+                                                stats.getTotalRequestsCount(),
+                                                stats.getCurrentRequestsCount(),
+                                                stats.getCacheHitCount(),
+                                                stats.getCacheMissCount(),
+                                                stats.getCurrentCacheSize());
+                                    }
                                 }
                             }
                         } // for (;;)
@@ -359,10 +389,6 @@ public class CMDIValidatorTool {
                 .withDescription("be verbose")
                 .withLongOpt("verbose")
                 .create(OPT_VERBOSE));
-        options.addOption(OptionBuilder
-                .withDescription("no progress reporting")
-                .withLongOpt("no-progress")
-                .create(OPT_NO_PROGRESS));
         OptionGroup g2 = new OptionGroup();
         g2.addOption(OptionBuilder
                 .withDescription("number of validator threads")
@@ -397,10 +423,16 @@ public class CMDIValidatorTool {
                 .withLongOpt("schematron-file")
                 .create(OPT_SCHEMATRON_FILE));
         options.addOptionGroup(g3);
-        options.addOption(OptionBuilder
-                .withDescription("check if persistent identifiers resolve correctly")
+        OptionGroup g4 = new OptionGroup();
+        g4.addOption(OptionBuilder
+                .withDescription("check persistent identifiers syntax")
                 .withLongOpt("check-pids")
                 .create(OPT_CHECK_PIDS));
+        g4.addOption(OptionBuilder
+                .withDescription("check persistent identifiers syntax and if they resolve properly")
+                .withLongOpt("check-and-resolve-pids")
+                .create(OPT_CHECK_AND_RESOLVE_PIDS));
+        options.addOptionGroup(g4);
         return options;
     }
 

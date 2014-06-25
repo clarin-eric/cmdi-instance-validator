@@ -17,56 +17,153 @@
 package eu.clarin.cmdi.validator.utils;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.net.SocketTimeoutException;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
-import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.CookieSpecs;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpHead;
-import org.apache.http.client.params.ClientPNames;
-import org.apache.http.client.utils.HttpClientUtils;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.params.CoreProtocolPNames;
-import org.apache.http.params.HttpParams;
+import org.apache.http.config.ConnectionConfig;
+import org.apache.http.config.SocketConfig;
+import org.apache.http.conn.ConnectTimeoutException;
+import org.apache.http.conn.ConnectionKeepAliveStrategy;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.protocol.BasicHttpContext;
+import org.apache.http.protocol.HttpContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import eu.clarin.cmdi.validator.CMDIValidatorException;
+import eu.clarin.cmdi.validator.Version;
 
 public class HandleResolver {
+    public static final class Statistics {
+        private final long cacheHitCount;
+        private final long cacheMissCount;
+        private final long timeoutCount;
+        private final long unknownHostCount;
+        private final long errorCount;
+        private final long totalRequestsCount;
+        private final int currentRequestsCount;
+        private final int currentCacheSize;
+
+        private Statistics(long cacheHitCount,
+                long cacheMissCount,
+                long timeoutCount,
+                long unknownHostCount,
+                long errorCount,
+                long totalRequestsCount,
+                int currentRequestsCount,
+                int currentCacheSize) {
+            this.cacheHitCount        = cacheHitCount;
+            this.cacheMissCount       = cacheMissCount;
+            this.timeoutCount         = timeoutCount;
+            this.unknownHostCount     = unknownHostCount;
+            this.errorCount           = errorCount;
+            this.totalRequestsCount   = totalRequestsCount;
+            this.currentRequestsCount = currentRequestsCount;
+            this.currentCacheSize     = currentCacheSize;
+        }
+
+
+        public long getCacheHitCount() {
+            return cacheHitCount;
+        }
+
+
+        public long getCacheMissCount() {
+            return cacheMissCount;
+        }
+
+
+        public long getTimeoutCount() {
+            return timeoutCount;
+        }
+
+
+        public long getUnknownHostCount() {
+            return unknownHostCount;
+        }
+
+
+        public long getErrorCount() {
+            return errorCount;
+        }
+
+
+        public long getTotalRequestsCount() {
+            return totalRequestsCount;
+        }
+
+
+        public int getCurrentRequestsCount() {
+            return currentRequestsCount;
+        }
+
+        public int getCurrentCacheSize() {
+            return currentCacheSize;
+        }
+    }
     private static final Logger logger =
             LoggerFactory.getLogger(HandleResolver.class);
-    public final int ERROR   = -1;
+    public static final int TIMEOUT      = -1;
+    public static final int UNKNOWN_HOST = -2;
+    public static final int ERROR        = -3;
+    private static final String USER_AGENT =
+            "CMDI-Validator-HandleResolver/" + Version.getVersion();
+    private static final int DEFAULT_MAX_CONCURRENT_REQUESTS = 8;
+    private static final int DEFAULT_CONNECT_TIMEOUT = 5000;
+    private static final int DEFAULT_SOCKET_TIMEOUT = 10000;
     private final LRUCache<URI, Integer> cache =
             new LRUCache<URI, Integer>(16 * 1024);
     private final Set<URI> pending;
+    private final int maxConcurrentRequestsCount;
+    private final Semaphore maxConcurrentRequests;
+    private final CloseableHttpClient client;
+    private long cacheHitCount                = 0;
+    private long cacheMissCount               = 0;
+    private AtomicLong timeoutCount           = new AtomicLong();
+    private AtomicLong unknownHostCount       = new AtomicLong();
+    private AtomicLong errorCount             = new AtomicLong();
+    private AtomicLong totalRequestsCount     = new AtomicLong();
+    private AtomicInteger currentRequestCount = new AtomicInteger();
     private final Object waiter = new Object();
-    private long cacheHits   = 0;
-    private long cacheMisses = 0;
 
 
-    public HandleResolver(final int threads) {
-        this.pending = new HashSet<URI>(threads * 2);
+    public HandleResolver(int maxConcurrentRequests) {
+        if (maxConcurrentRequests < 1) {
+            throw new IllegalArgumentException("maxConcurrentRequests < 1");
+        }
+        this.pending = new HashSet<URI>(maxConcurrentRequests * 4);
+        this.client = createHttpClient(DEFAULT_CONNECT_TIMEOUT,
+                DEFAULT_SOCKET_TIMEOUT);
+        this.maxConcurrentRequestsCount = maxConcurrentRequests;
+        this.maxConcurrentRequests = new Semaphore(maxConcurrentRequests, true);
     }
 
 
-    public long getCacheHits() {
-        return cacheHits;
+    public HandleResolver() {
+        this(DEFAULT_MAX_CONCURRENT_REQUESTS);
     }
 
 
-    public long getCacheMisses() {
-        return cacheMisses;
-    }
-
-
-    public int resolve(final URI handle) throws CMDIValidatorException {
+    public int resolve(final URI handle) throws IOException {
         if (handle == null) {
             throw new NullPointerException("handle == null");
         }
         logger.debug("resolving '{}'", handle);
+        totalRequestsCount.incrementAndGet();
         for (;;) {
             boolean doResolve = false;
             synchronized (cache) {
@@ -74,13 +171,13 @@ public class HandleResolver {
                 if (cached != null) {
                     logger.trace("got cached result for '{}': {}",
                             handle, cached);
-                    cacheHits++;
+                    cacheHitCount++;
                     return cached.intValue();
                 }
+                cacheMissCount++;
 
                 synchronized (pending) {
                     if (!pending.contains(handle)) {
-                        cacheMisses++;
                         doResolve = true;
                         pending.add(handle);
                     }
@@ -91,15 +188,7 @@ public class HandleResolver {
             if (doResolve) {
                 int result = ERROR;
                 try {
-                    final HttpClient httpClient = newHttpClient();
-                    try {
-                        result = doResolve(handle, httpClient);
-                    } finally {
-                        HttpClientUtils.closeQuietly(httpClient);
-                    }
-                } catch (Throwable e) {
-                    throw new CMDIValidatorException(
-                            "error while resolving handle '" + handle + "'", e);
+                    result = doResolve(handle);
                 } finally {
                     // cache result and notify other threads
                     synchronized (cache) {
@@ -113,6 +202,9 @@ public class HandleResolver {
                             } // synchronized (waiter)
                         } // synchronized (pending)
                     } // synchronized (cache)
+                    if (result == ERROR) {
+                        errorCount.incrementAndGet();
+                    }
                 }
                 return result;
             } else {
@@ -121,6 +213,7 @@ public class HandleResolver {
                         waiter.wait();
                     } // synchronized (waiter)
                 } catch (InterruptedException e) {
+                    errorCount.incrementAndGet();
                     return ERROR;
                 }
             }
@@ -128,39 +221,133 @@ public class HandleResolver {
     }
 
 
-    private int doResolve(final URI handle, final HttpClient httpClient)
-            throws CMDIValidatorException {
-        logger.trace("performing HTTP request for '{}'", handle);
-        HttpHead request = null;
-        HttpResponse response = null;
-        try {
-            request = new HttpHead(handle);
-            response = httpClient.execute(request);
+    public Statistics getStatistics() {
+        synchronized (cache) {
+            return new Statistics(cacheHitCount,
+                    cacheMissCount,
+                    timeoutCount.get(),
+                    unknownHostCount.get(),
+                    errorCount.get(),
+                    totalRequestsCount.get(),
+                    currentRequestCount.get(),
+                    cache.size());
+        } // synchronized (cache)
+    }
 
-            final StatusLine status = response.getStatusLine();
-            return status.getStatusCode();
-        } catch (IOException e) {
-            if (request != null) {
-                request.abort();
+
+    public void clear() {
+        try {
+            try {
+                // acquire all permits to deny any requests from happening ...
+                maxConcurrentRequests.acquire(maxConcurrentRequestsCount);
+
+                // clear data
+                synchronized (cache) {
+                    cache.clear();
+                    cacheHitCount  = 0;
+                    cacheMissCount = 0;
+                    timeoutCount.set(0);
+                    unknownHostCount.set(0);
+                    errorCount.set(0);
+                    totalRequestsCount.set(0);
+                } // synchronized (cache)
+            } finally {
+                maxConcurrentRequests.release();
             }
-            throw new CMDIValidatorException("error resolving handle '" +
-                    handle + "'", e);
-        } finally {
-            /* make sure to release allocated resources */
-            HttpClientUtils.closeQuietly(response);
+        } catch (InterruptedException e) {
+            /* IGNORE */
         }
     }
 
 
-    private HttpClient newHttpClient() {
-        final HttpClient client = new DefaultHttpClient();
-        final HttpParams params = client.getParams();
-        params.setParameter(CoreProtocolPNames.USER_AGENT,
-                getClass().getName() + "/1.0");
-        params.setBooleanParameter(ClientPNames.HANDLE_REDIRECTS, Boolean.TRUE);
-        params.setBooleanParameter(ClientPNames.ALLOW_CIRCULAR_REDIRECTS, true);
-        params.setIntParameter(ClientPNames.MAX_REDIRECTS, 16);
-        return client;
+    private int doResolve(final URI handle) throws IOException {
+        logger.trace("performing HTTP request for '{}'", handle);
+
+        try {
+            maxConcurrentRequests.acquire();
+        } catch (InterruptedException e) {
+            throw new InterruptedIOException();
+        }
+
+        currentRequestCount.incrementAndGet();
+        final HttpHead request = new HttpHead(handle);
+        try {
+            final CloseableHttpResponse response =
+                    client.execute(request, new BasicHttpContext());
+            try {
+                final StatusLine status = response.getStatusLine();
+                return status.getStatusCode();
+            } finally {
+                response.close();
+            }
+        } catch (ConnectTimeoutException e) {
+            timeoutCount.incrementAndGet();
+            return TIMEOUT;
+        } catch (SocketTimeoutException e) {
+            timeoutCount.incrementAndGet();
+            return TIMEOUT;
+        } catch (UnknownHostException e) {
+            unknownHostCount.incrementAndGet();
+            return UNKNOWN_HOST;
+        } finally {
+            request.reset();
+            currentRequestCount.decrementAndGet();
+            maxConcurrentRequests.release();
+        }
+    }
+
+
+    private CloseableHttpClient createHttpClient(int connectTimeout,
+            int socketTimeout) {
+        final PoolingHttpClientConnectionManager manager =
+                new PoolingHttpClientConnectionManager();
+        manager.setDefaultMaxPerRoute(8);
+        manager.setMaxTotal(128);
+
+        final SocketConfig socketConfig = SocketConfig.custom()
+                .setSoReuseAddress(true)
+                .setSoLinger(0)
+                .build();
+
+        final ConnectionConfig connectionConfig = ConnectionConfig.custom()
+                .setBufferSize(1024)
+                .build();
+
+        final RequestConfig requestConfig = RequestConfig.custom()
+                .setAuthenticationEnabled(false)
+                .setRedirectsEnabled(true)
+                .setMaxRedirects(4)
+                .setCircularRedirectsAllowed(false)
+                .setCookieSpec(CookieSpecs.IGNORE_COOKIES)
+                .setConnectTimeout(connectTimeout)
+                .setSocketTimeout(socketTimeout)
+                .setConnectionRequestTimeout(0) /* infinite */
+                .setStaleConnectionCheckEnabled(false)
+                .build();
+
+        final ConnectionKeepAliveStrategy keepAliveStrategy =
+                new ConnectionKeepAliveStrategy() {
+            @Override
+            public long getKeepAliveDuration(final HttpResponse response,
+                    final HttpContext context) {
+                return 15000;
+            }
+        };
+
+        return HttpClients.custom()
+                .setUserAgent(USER_AGENT)
+                .setConnectionManager(manager)
+                .setDefaultSocketConfig(socketConfig)
+                .setDefaultConnectionConfig(connectionConfig)
+                .setDefaultRequestConfig(requestConfig)
+                .setKeepAliveStrategy(keepAliveStrategy)
+                .build();
+    }
+
+
+    @Override
+    protected void finalize() throws Throwable {
+        client.close();
     }
 
 } // class HandleResolver
