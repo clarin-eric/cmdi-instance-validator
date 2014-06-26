@@ -56,6 +56,7 @@ public class CMDIValidatorTool {
     private static final long DEFAULT_PROGRESS_INTERVAL  = 15000;
     private static final Locale LOCALE                   = Locale.ENGLISH;
     private static final char OPT_DEBUG                  = 'd';
+    private static final char OPT_DEBUG_TRACE            = 'D';
     private static final char OPT_QUIET                  = 'q';
     private static final char OPT_VERBOSE                = 'v';
     private static final char OPT_THREAD_COUNT           = 't';
@@ -75,7 +76,7 @@ public class CMDIValidatorTool {
         /*
          * application defaults
          */
-        boolean debugging         = false;
+        int debugging             = 0;
         boolean quiet             = false;
         boolean verbose           = false;
         int threadCount           = Runtime.getRuntime().availableProcessors();
@@ -113,7 +114,10 @@ public class CMDIValidatorTool {
 
             // extract options
             if (line.hasOption(OPT_DEBUG)) {
-                debugging = true;
+                debugging = 1;
+            }
+            if (line.hasOption(OPT_DEBUG_TRACE)) {
+                debugging = 2;
             }
             if (line.hasOption(OPT_QUIET)) {
                 quiet = true;
@@ -177,10 +181,14 @@ public class CMDIValidatorTool {
             final org.apache.log4j.Logger log =
                     org.apache.log4j.Logger.getLogger(
                             CMDIValidator.class.getPackage().getName());
-            if (debugging) {
+            if (debugging > 0) {
                 appender.setLayout(
                         new org.apache.log4j.PatternLayout("[%p] %t: %m%n"));
-                log.setLevel(org.apache.log4j.Level.DEBUG);
+                if (debugging > 1) {
+                    log.setLevel(org.apache.log4j.Level.TRACE);
+                } else {
+                    log.setLevel(org.apache.log4j.Level.DEBUG);
+                }
             } else {
                 if (quiet) {
                     log.setLevel(org.apache.log4j.Level.ERROR);
@@ -345,13 +353,13 @@ public class CMDIValidatorTool {
             }
         } catch (CMDIValidatorException e) {
             logger.error("error initalizing job: {}", e.getMessage());
-            if (debugging) {
+            if (debugging > 0) {
                 logger.error(e.getMessage(), e);
             }
             System.exit(1);
         } catch (CMDIValidatorInitException e) {
             logger.error("error initializing validator: {}", e.getMessage());
-            if (debugging) {
+            if (debugging > 0) {
                 logger.error(e.getMessage(), e);
             }
             System.exit(2);
@@ -380,6 +388,10 @@ public class CMDIValidatorTool {
                 .withDescription("enable debugging output")
                 .withLongOpt("debug")
                 .create(OPT_DEBUG));
+        g1.addOption(OptionBuilder
+                .withDescription("enable full debugging output")
+                .withLongOpt("trace")
+                .create(OPT_DEBUG_TRACE));
         g1.addOption(OptionBuilder
                 .withDescription("be quiet")
                 .withLongOpt("quiet")
