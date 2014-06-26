@@ -32,24 +32,27 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.xml.XMLConstants;
-import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.ErrorListener;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.sax.SAXSource;
 import javax.xml.transform.stream.StreamSource;
 
 import net.java.truevfs.access.TFile;
 import net.java.truevfs.access.TFileInputStream;
-import net.sf.saxon.s9api.Axis;
+import net.sf.saxon.Configuration;
 import net.sf.saxon.s9api.DocumentBuilder;
 import net.sf.saxon.s9api.Processor;
 import net.sf.saxon.s9api.QName;
 import net.sf.saxon.s9api.SaxonApiException;
 import net.sf.saxon.s9api.WhitespaceStrippingPolicy;
 import net.sf.saxon.s9api.XPathCompiler;
-import net.sf.saxon.s9api.XPathExecutable;
 import net.sf.saxon.s9api.XPathSelector;
+import net.sf.saxon.s9api.XQueryCompiler;
+import net.sf.saxon.s9api.XQueryEvaluator;
+import net.sf.saxon.s9api.XQueryExecutable;
 import net.sf.saxon.s9api.XdmDestination;
 import net.sf.saxon.s9api.XdmItem;
 import net.sf.saxon.s9api.XdmNode;
-import net.sf.saxon.s9api.XdmSequenceIterator;
 import net.sf.saxon.s9api.XsltCompiler;
 import net.sf.saxon.s9api.XsltExecutable;
 import net.sf.saxon.s9api.XsltTransformer;
@@ -57,7 +60,7 @@ import net.sf.saxon.s9api.XsltTransformer;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.xerces.impl.xs.XMLSchemaLoader;
 import org.apache.xerces.impl.xs.XSDDescription;
-import org.apache.xerces.parsers.DOMParser;
+import org.apache.xerces.parsers.SAXParser;
 import org.apache.xerces.parsers.XML11Configuration;
 import org.apache.xerces.util.SymbolTable;
 import org.apache.xerces.xni.XMLResourceIdentifier;
@@ -71,12 +74,14 @@ import org.apache.xerces.xni.parser.XMLInputSource;
 import org.apache.xerces.xni.parser.XMLParseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.w3c.dom.Document;
+import org.xml.sax.ErrorHandler;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
 
 import eu.clarin.cmdi.validator.CMDIValidatorResult.Severity;
 import eu.clarin.cmdi.validator.utils.LRUCache;
+import eu.clarin.cmdi.validator.utils.SaxonLocationUtils;
 
 
 public final class CMDIValidator {
@@ -91,6 +96,8 @@ public final class CMDIValidator {
             "/schematron/iso_abstract_expand.xsl";
     private static final String SCHEMATATRON_STAGE_3 =
             "/schematron/iso_svrl_for_xslt2.xsl";
+    private static final String ANALYZE_SVRL =
+            "/analyze-svrl.xq";
     private static final String DEFAULT_SCHEMATRON_SCHEMA =
             "/default.sch";
     private static final String XML_SCHEMA_LOCATION =
@@ -110,19 +117,12 @@ public final class CMDIValidator {
     private static final String HONOUR_ALL_SCHEMA_LOCATIONS_ID =
             "http://apache.org/xml/features/honour-all-schemaLocations";
     private static final int INITAL_SYMBOL_TABLE_SIZE = 16141;
-    private static final String SVRL_NAMESPACE_URI =
-            "http://purl.oclc.org/dsdl/svrl";
-    private static final String SVRL_NAMESPACE_PREFIX =
-            "svrl";
-    private static final QName SVRL_TEXT =
-            new QName(SVRL_NAMESPACE_URI, "text");
-    private static final QName SVRL_FAILED_ASSERT =
-            new QName(SVRL_NAMESPACE_URI, "failed-assert");
+    private static final QName SVRL_S = new QName("s");
+    private static final QName SVRL_L = new QName("l");
     private final Processor processor;
     private final CMDISchemaLoader schemaLoader;
     private final XsltExecutable schematronValidatorExecutable;
-    private final XPathExecutable xpath1;
-    private final XPathExecutable xpath2;
+    private final XQueryExecutable analyzeSchematronReport;
     private final List<CMDIValidatorExtension> extensions;
     private final FileEnumerator files;
     private final CMDIValidatorHandler handler;
@@ -155,6 +155,30 @@ public final class CMDIValidator {
          */
         logger.debug("initializing Saxon ...");
         this.processor = new Processor(true);
+        final Configuration saxonConfig =
+                this.processor.getUnderlyingConfiguration();
+        saxonConfig.setErrorListener(new ErrorListener() {
+            @Override
+            public void warning(TransformerException exception)
+                    throws TransformerException {
+                throw exception;
+            }
+
+
+            @Override
+            public void fatalError(TransformerException exception)
+                    throws TransformerException {
+                throw exception;
+            }
+
+
+            @Override
+            public void error(TransformerException exception)
+                    throws TransformerException {
+                throw exception;
+            }
+        });
+
 
         /*
          * initialize Schematron validator
@@ -162,20 +186,30 @@ public final class CMDIValidator {
         if (!config.isSchematronDisabled()) {
             this.schematronValidatorExecutable =
                     initSchematronValidator(config, processor);
+            InputStream stream = null;
             try {
-                final XPathCompiler compiler = processor.newXPathCompiler();
-                compiler.declareNamespace(SVRL_NAMESPACE_PREFIX, SVRL_NAMESPACE_URI);
-                this.xpath1 = compiler.compile("//(svrl:failed-assert|svrl:successful-report)");
-                this.xpath2 = compiler.compile("preceding-sibling::svrl:fired-rule/@role");
+                stream = getClass().getResourceAsStream(ANALYZE_SVRL);
+                final XQueryCompiler compiler = processor.newXQueryCompiler();
+                this.analyzeSchematronReport  = compiler.compile(stream);
+            } catch (IOException e) {
+                throw new CMDIValidatorInitException(
+                        "error initializing schematron validator", e);
             } catch (SaxonApiException e) {
                 throw new CMDIValidatorInitException(
                         "error initializing schematron validator", e);
+            } finally {
+                if (stream != null) {
+                    try {
+                        stream.close();
+                    } catch (IOException e) {
+                        /* IGNORE */
+                    }
+                }
             }
             logger.debug("Schematron validator successfully initialized");
         } else {
             this.schematronValidatorExecutable = null;
-            this.xpath1                        = null;
-            this.xpath2                        = null;
+            this.analyzeSchematronReport       = null;
         }
 
         /*
@@ -423,7 +457,7 @@ public final class CMDIValidator {
 
 
     private final class ThreadContext {
-        private final XML11Configuration xercesConfig;
+        private final SAXParser parser;
         private final XsltTransformer schematronValidator;
         private final DocumentBuilder builder;
         private final ResultImpl result = new ResultImpl();
@@ -433,7 +467,7 @@ public final class CMDIValidator {
             /*
              * initialize Xerces
              */
-            final XMLEntityResolver resolver = new XMLEntityResolver() {
+            XMLEntityResolver resolver = new XMLEntityResolver() {
                 @Override
                 public XMLInputSource resolveEntity(
                         XMLResourceIdentifier identifier) throws XNIException,
@@ -504,52 +538,65 @@ public final class CMDIValidator {
                 logger.error("error initaliting thread context", e);
             }
 
-            xercesConfig = new XML11Configuration(symbols, pool);
+            XML11Configuration xercesConfig =
+                    new XML11Configuration(symbols, pool);
             xercesConfig.setFeature(NAMESPACES_FEATURE_ID, true);
             xercesConfig.setFeature(VALIDATION_FEATURE_ID, true);
             xercesConfig.setFeature(SCHEMA_VALIDATION_FEATURE_ID, true);
             xercesConfig.setFeature(SCHEMA_FULL_CHECKING_FEATURE_ID, true);
             xercesConfig.setFeature(HONOUR_ALL_SCHEMA_LOCATIONS_ID, true);
             xercesConfig.setEntityResolver(resolver);
-            xercesConfig.setErrorHandler(new XMLErrorHandler() {
+
+            /*
+             * create a reusable parser and also add an error handler.
+             * We cannot use a global error handler in xerces config, because
+             * Saxon ignores and overwrites it ...
+             */
+            this.parser = new SAXParser(xercesConfig);
+            this.parser.setErrorHandler(new ErrorHandler() {
                 @Override
-                public void warning(String domain, String key,
-                        XMLParseException e) throws XNIException {
+                public void warning(SAXParseException e) throws SAXException {
                     reportWarning(e.getLineNumber(),
                             e.getColumnNumber(),
-                            e.getMessage(), e);
+                            e.getMessage(),
+                            e);
                 }
 
-
                 @Override
-                public void error(String domain, String key,
-                        XMLParseException e) throws XNIException {
+                public void error(SAXParseException e) throws SAXException {
                     reportError(e.getLineNumber(),
                             e.getColumnNumber(),
-                            e.getMessage(), e);
+                            e.getMessage(),
+                            e);
                     throw e;
                 }
 
-
                 @Override
-                public void fatalError(String domain, String key,
-                        XMLParseException e) throws XNIException {
+                public void fatalError(SAXParseException e) throws SAXException {
                     reportError(e.getLineNumber(),
                             e.getColumnNumber(),
-                            e.getMessage(), e);
+                            e.getMessage(),
+                            e);
                     throw e;
                 }
             });
 
             /*
-             * initialize Saxon document builder
+             * initialize and configure Saxon document builder
              */
             this.builder = processor.newDocumentBuilder();
             this.builder.setWhitespaceStrippingPolicy(
                     WhitespaceStrippingPolicy.IGNORABLE);
+            this.builder.setLineNumbering(true);
+            /*
+             * even though, we need to perform Schema validation, tell
+             * Saxon to enable DTD validation. Otherwise, it will
+             * not validate at all ... :/
+             */
+            this.builder.setDTDValidation(true);
 
             /*
-             * initialize schematron
+             * initialize Schematron validator
              */
             if (schematronValidatorExecutable != null) {
                 this.schematronValidator = schematronValidatorExecutable.load();
@@ -622,23 +669,22 @@ public final class CMDIValidator {
         private XdmNode parseInstance(InputStream stream)
                 throws CMDIValidatorException {
             try {
-                final DOMParser parser = new DOMParser(xercesConfig);
                 try {
-                    parser.parse(new InputSource(stream));
-                    stream.close();
-
-                    final Document dom = parser.getDocument();
-                    if (dom == null) {
-                        throw new CMDIValidatorException(
-                                "parser returned no return result");
-                    }
-                    return builder.build(new DOMSource(dom));
+                    final SAXSource source =
+                            new SAXSource(parser, new InputSource(stream));
+                    return builder.build(source);
                 } finally {
-                    parser.reset();
+                    /* recycle parser */
+                    try {
+                        parser.reset();
+                    } catch (XNIException e) {
+                        throw new CMDIValidatorException(
+                                "error resetting parser", e);
+                    } finally {
+                        /* really make sure, stream is closed */
+                        stream.close();
+                    }
                 }
-            } catch (SAXException e) {
-                logger.trace("error parsing instance", e);
-                return null;
             } catch (SaxonApiException e) {
                 logger.trace("error parsing instance", e);
                 return null;
@@ -647,13 +693,6 @@ public final class CMDIValidator {
                         ? e.getMessage()
                         : "input/output error";
                 throw new CMDIValidatorException(message, e);
-            } finally {
-                /* really make sure, stream is closed */
-                try {
-                    stream.close();
-                } catch (IOException e) {
-                    /* IGNORE */
-                }
             }
         }
 
@@ -667,29 +706,45 @@ public final class CMDIValidator {
                 schematronValidator.setDestination(destination);
                 schematronValidator.transform();
 
-                final XPathSelector selector = xpath1.load();
-                selector.setContextItem(destination.getXdmNode());
-                for (XdmItem item : selector) {
-                    final XdmNode node = (XdmNode) item;
-                    final XdmNode text = getFirstChild(node, SVRL_TEXT);
-                    String msg = (text != null)
-                            ? text.getStringValue().trim()
-                            : null;
-                    if (SVRL_FAILED_ASSERT.equals(node.getNodeName())) {
-                        final XPathSelector selector2 = xpath2.load();
-                        String role = null;
-                        selector2.setContextItem(node);
-                        XdmItem evaluateSingle = selector2.evaluateSingle();
-                        if (evaluateSingle != null) {
-                            role = evaluateSingle.getStringValue().trim();
+                final XdmNode report = destination.getXdmNode();
+                if (report != null) {
+                    XPathCompiler xpathCompiler = null;
+                    final XQueryEvaluator evaluator =
+                            analyzeSchematronReport.load();
+                    evaluator.setContextItem(report);
+                    for (final XdmItem item : evaluator) {
+                        /* lazy initialize XPath compiler */
+                        if (xpathCompiler == null) {
+                            xpathCompiler = processor.newXPathCompiler();
+                            xpathCompiler.setCaching(true);
                         }
-                        if ("warning".equalsIgnoreCase(role)) {
-                            result.reportWarning(-1, -1, msg);
+                        final XdmNode node = (XdmNode) item;
+                        final String s =
+                                nullSafeTrim(node.getAttributeValue(SVRL_S));
+                        final String l =
+                                nullSafeTrim(node.getAttributeValue(SVRL_L));
+                        final String m =
+                                nullSafeTrim(node.getStringValue());
+                        int line   = -1;
+                        int column = -1;
+                        if (l != null) {
+                            XPathSelector xs = xpathCompiler.compile(l).load();
+                            xs.setContextItem(document);
+                            XdmItem n = xs.evaluateSingle();
+                            line = SaxonLocationUtils.getLineNumber(n);
+                            column = SaxonLocationUtils.getColumnNumber(n);
+                        }
+                        if ("I".equals(s)) {
+                            result.reportInfo(line, column, m);
+                        } else if ("W".equals(s)) {
+                            result.reportWarning(line, column, m);
                         } else {
-                            result.reportError(-1, -1, msg);
+                            result.reportError(line, column, m);
                         }
-                    } else {
-                        result.reportInfo(-1, -1, msg);
+                    } // for
+                    if (xpathCompiler != null) {
+                        xpathCompiler.setCaching(false);
+                        xpathCompiler = null;
                     }
                 }
             } catch (SaxonApiException e) {
@@ -699,13 +754,14 @@ public final class CMDIValidator {
         }
 
 
-        private XdmNode getFirstChild(XdmNode parent, QName name) {
-            XdmSequenceIterator i = parent.axisIterator(Axis.CHILD, name);
-            if (i.hasNext()) {
-                return (XdmNode) i.next();
-            } else {
-                return null;
+        private String nullSafeTrim(String s) {
+            if (s != null) {
+                s = s.trim();
+                if (s.isEmpty()) {
+                    s = null;
+                }
             }
+            return s;
         }
 
 
