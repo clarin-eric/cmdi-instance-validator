@@ -274,7 +274,7 @@ public final class CMDIValidator {
                 throw (CMDIValidatorException) e;
             } else {
                 throw new CMDIValidatorException(
-                        "an unexpected error occured", e);
+                        "an unexpected error occurred", e);
             }
         } finally {
             if (threadsProcessing.decrementAndGet() <= 0) {
