@@ -162,8 +162,7 @@ public class ThreadedCMDIValidatorProcessor implements CMDIValidatorProcessor {
             } catch (InterruptedException e) {
                 /* IGNORE */
             } catch (Throwable e) {
-                logger.error("unexpected error in worker thread: {}",
-                        e.getMessage(), e);
+                logger.error("unexpected exception in worker thread", e);
             }
         }
     }

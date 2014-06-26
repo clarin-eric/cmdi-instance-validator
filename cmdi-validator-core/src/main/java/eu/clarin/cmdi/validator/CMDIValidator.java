@@ -263,14 +263,19 @@ public final class CMDIValidator {
             }
 
             return done;
-        } catch (CMDIValidatorException e) {
+        } catch (Throwable e) {
             synchronized (this) {
                 state = State.DONE;
                 if (result == null) {
                     result = Result.ERROR;
                 }
             } // synchronized (this)
-            throw e;
+            if (e instanceof CMDIValidatorException) {
+                throw (CMDIValidatorException) e;
+            } else {
+                throw new CMDIValidatorException(
+                        "an unexpected error occured", e);
+            }
         } finally {
             if (threadsProcessing.decrementAndGet() <= 0) {
                 synchronized (this) {
