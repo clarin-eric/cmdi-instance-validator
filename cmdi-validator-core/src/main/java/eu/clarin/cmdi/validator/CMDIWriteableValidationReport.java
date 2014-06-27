@@ -16,7 +16,12 @@
  */
 package eu.clarin.cmdi.validator;
 
+import java.io.File;
+
 public interface CMDIWriteableValidationReport extends CMDIValidationReport {
+
+    public void setFile(File file);
+    
     public void reportInfo(int line, int col, String message);
 
 
@@ -34,4 +39,4 @@ public interface CMDIWriteableValidationReport extends CMDIValidationReport {
 
     public void reportError(int line, int col, String message, Throwable cause);
 
-} // interface CMDIValidatorWriteableResult
+} // interface CMDIWriteableValidationReport

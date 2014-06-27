@@ -615,7 +615,8 @@ public final class CMDIValidator {
                  */
                 logger.debug("validating file '{}' ({} bytes)",
                         file, file.length());
-                report = new CMDIWriteableValidatonReportImpl(file);
+                report = new CMDIWriteableValidatonReportImpl();
+                report.setFile(file);
                 stream = new TFileInputStream(file);
 
                 /*

@@ -6,19 +6,20 @@ import java.util.Collections;
 import java.util.List;
 
 final class CMDIWriteableValidatonReportImpl implements CMDIWriteableValidationReport {
-    private final File file;
+    private File file;
     private List<Message> messages;
     private Severity highestSeverity = Severity.INFO;
-
-
-    CMDIWriteableValidatonReportImpl(final File file) {
-        this.file = file;
-    }
 
 
     @Override
     public File getFile() {
         return file;
+    }
+
+
+    @Override
+    public void setFile(File file) {
+        this.file = file;
     }
 
 
@@ -57,7 +58,7 @@ final class CMDIWriteableValidatonReportImpl implements CMDIWriteableValidationR
 
     @Override
     public List<Message> getMessages() {
-        if (messages == null) {
+        if ((messages == null) && !messages.isEmpty()) {
             return Collections.emptyList();
         } else {
             return Collections.unmodifiableList(messages);
@@ -67,7 +68,9 @@ final class CMDIWriteableValidatonReportImpl implements CMDIWriteableValidationR
 
     @Override
     public Message getFirstMessage() {
-        return (messages != null) ? null : messages.get(0);
+        return ((messages != null) && !messages.isEmpty())
+                ? messages.get(0)
+                : null;
     }
 
 
@@ -77,7 +80,7 @@ final class CMDIWriteableValidatonReportImpl implements CMDIWriteableValidationR
             throw new NullPointerException("severity == null");
         }
 
-        if (messages != null) {
+        if ((messages != null) && !messages.isEmpty()) {
             for (Message msg : messages) {
                 if (severity.equals(msg.getSeverity())) {
                     return msg;
@@ -90,7 +93,9 @@ final class CMDIWriteableValidatonReportImpl implements CMDIWriteableValidationR
 
     @Override
     public int getMessageCount() {
-        return (messages != null) ? messages.size() : 0;
+        return ((messages != null) && !messages.isEmpty())
+                ? messages.size()
+                : 0;
     }
 
 
@@ -101,7 +106,7 @@ final class CMDIWriteableValidatonReportImpl implements CMDIWriteableValidationR
         }
 
         int count = 0;
-        if (messages != null) {
+        if ((messages != null) && !messages.isEmpty()) {
             for (Message msg : messages) {
                 if (severity.equals(msg.getSeverity())) {
                     count++;
