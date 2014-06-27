@@ -22,7 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -217,7 +217,8 @@ public final class CMDIValidator {
          */
         final List<CMDIValidatorExtension> exts = config.getExtensions();
         if (exts != null) {
-            this.extensions = new LinkedList<CMDIValidatorExtension>();
+            this.extensions =
+                    new ArrayList<CMDIValidatorExtension>(exts.size());
             for (CMDIValidatorExtension extension : exts) {
                 extension.initalize(processor);
                 extensions.add(extension);
@@ -460,7 +461,7 @@ public final class CMDIValidator {
         private final SAXParser parser;
         private final XsltTransformer schematronValidator;
         private final DocumentBuilder builder;
-        private final ResultImpl result = new ResultImpl();
+        private CMDIValidatorWriteableResult result;
 
 
         private ThreadContext() {
@@ -609,12 +610,13 @@ public final class CMDIValidator {
         private void validate(final TFile file) throws CMDIValidatorException {
             TFileInputStream stream = null;
             try {
+
                 /*
                  * step 0: prepare
                  */
                 logger.debug("validating file '{}' ({} bytes)",
                         file, file.length());
-                result.setFile(file);
+                result = new CMDIValidatorWriteableResultImpl(file);
                 stream = new TFileInputStream(file);
 
                 /*
@@ -653,14 +655,17 @@ public final class CMDIValidator {
                     throw new CMDIValidatorException(
                             "error closing file '" + file + "'", e);
                 } finally {
-                    if (handler != null) {
-                        if (result.isHighestSeverity(Severity.ERROR)) {
-                            handler.onValidationFailure(result);
-                        } else {
-                            handler.onValidationSuccess(result);
+                    if ((result != null) && (handler != null)) {
+                        try {
+                            if (result.isHighestSeverity(Severity.ERROR)) {
+                                handler.onValidationFailure(result);
+                            } else {
+                                handler.onValidationSuccess(result);
+                            }
+                        } finally {
+                            result = null;
                         }
                     }
-                    result.reset();
                 }
             }
         }
@@ -1010,214 +1015,5 @@ public final class CMDIValidator {
             return null;
         }
     }  // class ShadowCacheGrammarPool
-
-
-    private static final class ResultImpl implements
-            CMDIValidatorWriteableResult {
-        private final List<Message> messages = new LinkedList<Message>();
-        private File file;
-        private Severity highestSeverity;
-
-
-        private ResultImpl() {
-            reset();
-        }
-
-
-        @Override
-        public File getFile() {
-            return file;
-        }
-
-
-        @Override
-        public Severity getHighestSeverity() {
-            return highestSeverity;
-        }
-
-
-        @Override
-        public boolean isHighestSeverity(Severity severity) {
-            if (severity == null) {
-                throw new NullPointerException("severity == null");
-            }
-            return this.highestSeverity.equals(severity);
-        }
-
-
-        @Override
-        public List<Message> getMessages() {
-            if (messages.isEmpty()) {
-                return Collections.emptyList();
-            } else {
-                return Collections.unmodifiableList(messages);
-            }
-        }
-
-
-        @Override
-        public Message getFirstMessage() {
-            return messages.isEmpty() ? null : messages.get(0);
-        }
-
-
-        @Override
-        public Message getFirstMessage(Severity severity) {
-            if (severity == null) {
-                throw new NullPointerException("severity == null");
-            }
-
-            if (!messages.isEmpty()) {
-                for (Message msg : messages) {
-                    if (severity.equals(msg.getSeverity())) {
-                        return msg;
-                    }
-                }
-            }
-            return null;
-        }
-
-
-        @Override
-        public int getMessageCount() {
-            return messages.size();
-        }
-
-
-        @Override
-        public int getMessageCount(Severity severity) {
-            if (severity == null) {
-                throw new NullPointerException("severity == null");
-            }
-
-            int count = 0;
-            if (!messages.isEmpty()) {
-                for (Message msg : messages) {
-                    if (severity.equals(msg.getSeverity())) {
-                        count++;
-                    }
-                }
-            }
-            return count;
-        }
-
-
-        @Override
-        public void reportInfo(int line, int col, String message) {
-            reportInfo(line, col, message, null);
-        }
-
-
-        @Override
-        public void reportInfo(int line, int col, String message,
-                Throwable cause) {
-            messages.add(new MessageImpl(Severity.INFO, line, col, message,
-                    cause));
-        }
-
-
-        @Override
-        public void reportWarning(int line, int col, String message) {
-            reportWarning(line, col, message, null);
-        }
-
-
-        @Override
-        public void reportWarning(int line, int col, String message,
-                Throwable cause) {
-            switch (highestSeverity) {
-            case WARNING:
-                /* FALL-THROUGH */
-            case ERROR:
-                break;
-            default:
-                highestSeverity = Severity.WARNING;
-            }
-            messages.add(new MessageImpl(Severity.WARNING, line, col, message,
-                    cause));
-        }
-
-
-        @Override
-        public void reportError(int line, int col, String message) {
-            reportError(line, col, message, null);
-        }
-
-
-        @Override
-        public void reportError(int line, int col, String message,
-                Throwable cause) {
-            switch (highestSeverity) {
-            case ERROR:
-                break;
-            default:
-                highestSeverity = Severity.ERROR;
-            }
-            messages.add(new MessageImpl(Severity.ERROR, line, col, message,
-                    cause));
-        }
-
-
-        private void setFile(File file) {
-            this.file = file;
-        }
-
-
-        private void reset() {
-            this.messages.clear();
-            this.file = null;
-            this.highestSeverity = Severity.INFO;
-        }
-    } // class ResultImpl
-
-
-    private static final class MessageImpl implements
-            CMDIValidatorResult.Message {
-        private final Severity severity;
-        private final int line;
-        private final int col;
-        private final String message;
-        private final Throwable cause;
-
-
-        private MessageImpl(Severity severity, int line, int col,
-                String message, Throwable cause) {
-            this.severity = severity;
-            this.line     = line;
-            this.col      = col;
-            this.message  = message;
-            this.cause    = cause;
-        }
-
-
-        @Override
-        public Severity getSeverity() {
-            return severity;
-        }
-
-
-        @Override
-        public int getLineNumber() {
-            return line;
-        }
-
-
-        @Override
-        public int getColumnNumber() {
-            return col;
-        }
-
-
-        @Override
-        public String getMessage() {
-            return message;
-        }
-
-
-        @Override
-        public Throwable getCause() {
-            return cause;
-        }
-    } // class MessageImpl
 
 } // class CMDIValidator

@@ -18,8 +18,8 @@ package eu.clarin.cmdi.validator;
 
 import java.io.File;
 import java.io.FileFilter;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedList;
 import java.util.List;
 
 
@@ -164,7 +164,7 @@ public class CMDIValidatorConfig {
                 throw new NullPointerException("extension == null");
             }
             if (config.extensions == null) {
-                config.extensions = new LinkedList<CMDIValidatorExtension>();
+                config.extensions = new ArrayList<CMDIValidatorExtension>();
             }
             config.extensions.add(extension);
             return this;

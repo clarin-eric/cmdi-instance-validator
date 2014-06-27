@@ -27,11 +27,21 @@ public interface CMDIValidatorResult {
             public String getShortcut() {
                 return "I";
             }
+
+            @Override
+            public int priority() {
+                return 1;
+            }
         },
         WARNING {
             @Override
             public String getShortcut() {
                 return "W";
+            }
+
+            @Override
+            public int priority() {
+                return 2;
             }
         },
         ERROR {
@@ -39,9 +49,17 @@ public interface CMDIValidatorResult {
             public String getShortcut() {
                 return "E";
             }
+
+            @Override
+            public int priority() {
+                return 3;
+            }
         };
 
         public abstract String getShortcut();
+
+
+        public abstract int priority();
     } // enum Severity
 
     public interface Message {
