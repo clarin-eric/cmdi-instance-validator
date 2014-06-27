@@ -17,21 +17,22 @@
 package eu.clarin.cmdi.validator;
 
 
-public interface CMDIValidatorHandler {
+public class CMDIValidationHandlerAdapter implements CMDIValidationHandler {
 
-    public void onJobStarted()
-            throws CMDIValidatorException;
+    @Override
+    public void onJobStarted() throws CMDIValidatorException {
+    }
 
 
+    @Override
     public void onJobFinished(final CMDIValidator.Result result)
-            throws CMDIValidatorException;
+            throws CMDIValidatorException {
+    }
 
 
-    public void onValidationSuccess(final CMDIValidatorResult result)
-            throws CMDIValidatorException;
+    @Override
+    public void onValidationReport(final CMDIValidationReport report)
+            throws CMDIValidatorException {
+    }
 
-
-    public void onValidationFailure(final CMDIValidatorResult result)
-            throws CMDIValidatorException;
-
-} // interface CMDIValidatorJobHandler
+} // class CMDIValidationHandlerAdapter

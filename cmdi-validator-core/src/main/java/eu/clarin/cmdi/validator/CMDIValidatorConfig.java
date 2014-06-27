@@ -25,7 +25,7 @@ import java.util.List;
 
 public class CMDIValidatorConfig {
     private final File root;
-    private final CMDIValidatorHandler handler;
+    private final CMDIValidationHandler handler;
     private FileFilter fileFilter = null;
     private File schemaCacheDirectory = null;
     private CMDISchemaLoader schemaLoader = null;
@@ -35,7 +35,7 @@ public class CMDIValidatorConfig {
 
 
     private CMDIValidatorConfig(final File root,
-            final CMDIValidatorHandler handler) {
+            final CMDIValidationHandler handler) {
         if (root == null) {
             throw new NullPointerException("root = null");
         }
@@ -57,7 +57,7 @@ public class CMDIValidatorConfig {
     }
 
 
-    public CMDIValidatorHandler getHandler() {
+    public CMDIValidationHandler getHandler() {
         return handler;
     }
 
@@ -95,7 +95,7 @@ public class CMDIValidatorConfig {
         private final CMDIValidatorConfig config;
 
 
-        public Builder(final File root, final CMDIValidatorHandler handler) {
+        public Builder(final File root, final CMDIValidationHandler handler) {
             if (root == null) {
                 throw new NullPointerException("root == null");
             }

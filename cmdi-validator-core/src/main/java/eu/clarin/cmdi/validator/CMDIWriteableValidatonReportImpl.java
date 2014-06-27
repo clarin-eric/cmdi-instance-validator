@@ -5,13 +5,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-final class CMDIValidatorWriteableResultImpl implements CMDIValidatorWriteableResult {
+final class CMDIWriteableValidatonReportImpl implements CMDIWriteableValidationReport {
     private final File file;
     private List<Message> messages;
     private Severity highestSeverity = Severity.INFO;
 
 
-    CMDIValidatorWriteableResultImpl(File file) {
+    CMDIWriteableValidatonReportImpl(final File file) {
         this.file = file;
     }
 
@@ -19,6 +19,24 @@ final class CMDIValidatorWriteableResultImpl implements CMDIValidatorWriteableRe
     @Override
     public File getFile() {
         return file;
+    }
+
+
+    @Override
+    public boolean isSuccess() {
+        return isHighestSeverity(Severity.INFO);
+    }
+
+
+    @Override
+    public boolean isWarning() {
+        return isHighestSeverity(Severity.WARNING);
+    }
+
+
+    @Override
+    public boolean isFailed() {
+        return isHighestSeverity(Severity.ERROR);
     }
 
 
@@ -149,7 +167,7 @@ final class CMDIValidatorWriteableResultImpl implements CMDIValidatorWriteableRe
 
 
     private static final class MessageImpl implements
-            CMDIValidatorResult.Message {
+            CMDIValidationReport.Message {
         private final Severity severity;
         private final int line;
         private final int col;

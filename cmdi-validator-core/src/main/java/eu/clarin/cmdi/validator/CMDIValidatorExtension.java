@@ -34,10 +34,11 @@ public abstract class CMDIValidatorExtension {
     }
 
 
-    public abstract void validate(XdmNode document,
-            CMDIValidatorWriteableResult result) throws CMDIValidatorException;
+    public abstract void validate(final XdmNode document,
+            final CMDIWriteableValidationReport report)
+            throws CMDIValidatorException;
 
 
     protected abstract void doInitialize() throws CMDIValidatorInitException;
 
-} // CMDIValidatorExtension
+} // class CMDIValidatorExtension

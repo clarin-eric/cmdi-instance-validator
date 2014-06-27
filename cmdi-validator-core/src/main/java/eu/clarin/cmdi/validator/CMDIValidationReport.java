@@ -20,7 +20,7 @@ import java.io.File;
 import java.util.List;
 
 
-public interface CMDIValidatorResult {
+public interface CMDIValidationReport {
     public enum Severity {
         INFO {
             @Override
@@ -80,6 +80,15 @@ public interface CMDIValidatorResult {
 
 
     public File getFile();
+
+
+    public boolean isSuccess();
+
+
+    public boolean isWarning();
+
+
+    public boolean isFailed();
 
 
     public Severity getHighestSeverity();

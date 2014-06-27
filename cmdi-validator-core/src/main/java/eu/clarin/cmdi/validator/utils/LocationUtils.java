@@ -19,9 +19,9 @@ package eu.clarin.cmdi.validator.utils;
 import net.sf.saxon.s9api.XdmItem;
 import net.sf.saxon.s9api.XdmNode;
 
-public final class SaxonLocationUtils {
-    
-    private SaxonLocationUtils() {
+public final class LocationUtils {
+
+    private LocationUtils() {
     }
 
 
@@ -40,4 +40,4 @@ public final class SaxonLocationUtils {
         return -1;
     }
 
-} // class SaxonLocationUtils
+} // class LocationUtils

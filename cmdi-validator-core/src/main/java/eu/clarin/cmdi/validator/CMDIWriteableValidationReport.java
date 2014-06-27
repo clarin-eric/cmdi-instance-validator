@@ -16,7 +16,7 @@
  */
 package eu.clarin.cmdi.validator;
 
-public interface CMDIValidatorWriteableResult extends CMDIValidatorResult {
+public interface CMDIWriteableValidationReport extends CMDIValidationReport {
     public void reportInfo(int line, int col, String message);
 
 

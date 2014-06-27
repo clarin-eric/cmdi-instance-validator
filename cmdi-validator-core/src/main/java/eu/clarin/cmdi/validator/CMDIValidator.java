@@ -79,9 +79,8 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
 
-import eu.clarin.cmdi.validator.CMDIValidatorResult.Severity;
 import eu.clarin.cmdi.validator.utils.LRUCache;
-import eu.clarin.cmdi.validator.utils.SaxonLocationUtils;
+import eu.clarin.cmdi.validator.utils.LocationUtils;
 
 
 public final class CMDIValidator {
@@ -125,7 +124,7 @@ public final class CMDIValidator {
     private final XQueryExecutable analyzeSchematronReport;
     private final List<CMDIValidatorExtension> extensions;
     private final FileEnumerator files;
-    private final CMDIValidatorHandler handler;
+    private final CMDIValidationHandler handler;
     private final Map<Thread, ThreadContext> contexts =
             new ConcurrentHashMap<Thread, ThreadContext>();
     private final AtomicInteger threadsProcessing = new AtomicInteger();
@@ -239,7 +238,7 @@ public final class CMDIValidator {
     }
 
 
-    public CMDIValidatorHandler getHandler() {
+    public CMDIValidationHandler getHandler() {
         return handler;
     }
 
@@ -461,7 +460,7 @@ public final class CMDIValidator {
         private final SAXParser parser;
         private final XsltTransformer schematronValidator;
         private final DocumentBuilder builder;
-        private CMDIValidatorWriteableResult result;
+        private CMDIWriteableValidationReport report;
 
 
         private ThreadContext() {
@@ -616,7 +615,7 @@ public final class CMDIValidator {
                  */
                 logger.debug("validating file '{}' ({} bytes)",
                         file, file.length());
-                result = new CMDIValidatorWriteableResultImpl(file);
+                report = new CMDIWriteableValidatonReportImpl(file);
                 stream = new TFileInputStream(file);
 
                 /*
@@ -637,7 +636,7 @@ public final class CMDIValidator {
                      */
                     if (extensions != null) {
                         for (CMDIValidatorExtension extension : extensions) {
-                            extension.validate(document, result);
+                            extension.validate(document, report);
                         }
                     }
                 }
@@ -655,15 +654,11 @@ public final class CMDIValidator {
                     throw new CMDIValidatorException(
                             "error closing file '" + file + "'", e);
                 } finally {
-                    if ((result != null) && (handler != null)) {
+                    if ((report != null) && (handler != null)) {
                         try {
-                            if (result.isHighestSeverity(Severity.ERROR)) {
-                                handler.onValidationFailure(result);
-                            } else {
-                                handler.onValidationSuccess(result);
-                            }
+                            handler.onValidationReport(report);
                         } finally {
-                            result = null;
+                            report = null;
                         }
                     }
                 }
@@ -711,12 +706,12 @@ public final class CMDIValidator {
                 schematronValidator.setDestination(destination);
                 schematronValidator.transform();
 
-                final XdmNode report = destination.getXdmNode();
-                if (report != null) {
+                final XdmNode svrlDocument = destination.getXdmNode();
+                if (svrlDocument != null) {
                     XPathCompiler xpathCompiler = null;
                     final XQueryEvaluator evaluator =
                             analyzeSchematronReport.load();
-                    evaluator.setContextItem(report);
+                    evaluator.setContextItem(svrlDocument);
                     for (final XdmItem item : evaluator) {
                         /* lazy initialize XPath compiler */
                         if (xpathCompiler == null) {
@@ -736,15 +731,15 @@ public final class CMDIValidator {
                             XPathSelector xs = xpathCompiler.compile(l).load();
                             xs.setContextItem(document);
                             XdmItem n = xs.evaluateSingle();
-                            line = SaxonLocationUtils.getLineNumber(n);
-                            column = SaxonLocationUtils.getColumnNumber(n);
+                            line = LocationUtils.getLineNumber(n);
+                            column = LocationUtils.getColumnNumber(n);
                         }
                         if ("I".equals(s)) {
-                            result.reportInfo(line, column, m);
+                            report.reportInfo(line, column, m);
                         } else if ("W".equals(s)) {
-                            result.reportWarning(line, column, m);
+                            report.reportWarning(line, column, m);
                         } else {
-                            result.reportError(line, column, m);
+                            report.reportError(line, column, m);
                         }
                     } // for
                     if (xpathCompiler != null) {
@@ -773,8 +768,8 @@ public final class CMDIValidator {
         private void reportWarning(int line, int col, String message,
                 Throwable cause) {
             logger.debug("reporting warning: [{}:{}]: {}", line, col, message);
-            if (result != null) {
-                result.reportWarning(line, col, message, cause);
+            if (report != null) {
+                report.reportWarning(line, col, message, cause);
             }
         }
 
@@ -782,8 +777,8 @@ public final class CMDIValidator {
         private void reportError(int line, int col, String message,
                 Throwable cause) {
             logger.debug("reporting error: [{}:{}]: {}", line, col, message);
-            if (result != null) {
-                result.reportError(line, col, message, cause);
+            if (report != null) {
+                report.reportError(line, col, message, cause);
             }
         }
     }

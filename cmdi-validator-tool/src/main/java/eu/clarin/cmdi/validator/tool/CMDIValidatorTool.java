@@ -22,6 +22,8 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import net.java.truevfs.access.TFile;
 import net.java.truevfs.access.TVFS;
@@ -43,10 +45,10 @@ import eu.clarin.cmdi.validator.CMDIValidator;
 import eu.clarin.cmdi.validator.CMDIValidatorConfig;
 import eu.clarin.cmdi.validator.CMDIValidatorException;
 import eu.clarin.cmdi.validator.CMDIValidatorInitException;
-import eu.clarin.cmdi.validator.CMDIValidatorHandlerAdapter;
-import eu.clarin.cmdi.validator.CMDIValidatorResult;
-import eu.clarin.cmdi.validator.CMDIValidatorResult.Message;
-import eu.clarin.cmdi.validator.CMDIValidatorResult.Severity;
+import eu.clarin.cmdi.validator.CMDIValidationHandlerAdapter;
+import eu.clarin.cmdi.validator.CMDIValidationReport;
+import eu.clarin.cmdi.validator.CMDIValidationReport.Message;
+import eu.clarin.cmdi.validator.CMDIValidationReport.Severity;
 import eu.clarin.cmdi.validator.extensions.CheckHandlesExtension;
 import eu.clarin.cmdi.validator.utils.HandleResolver;
 
@@ -228,7 +230,7 @@ public class CMDIValidatorTool {
                     }
 
 
-                    final ValidationHandler handler = new ValidationHandler(verbose);
+                    final Handler handler = new Handler(verbose);
 
                     final CMDIValidatorConfig.Builder builder =
                             new CMDIValidatorConfig.Builder(archive, handler);
@@ -465,18 +467,18 @@ public class CMDIValidatorTool {
     }
 
 
-    private static class ValidationHandler extends CMDIValidatorHandlerAdapter {
+    private static class Handler extends CMDIValidationHandlerAdapter {
         private final boolean verbose;
-        private long started     = System.currentTimeMillis();
-        private long finished    = -1;
-        private int filesTotal   = 0;
-        private int filesInvalid = 0;
-        private long totalBytes  = 0;
+        private long started               = -1;
+        private long finished              = -1;
+        private AtomicInteger filesTotal   = new AtomicInteger();
+        private AtomicInteger filesInvalid = new AtomicInteger();
+        private AtomicLong    totalBytes   = new AtomicLong();
         private boolean isCompleted = false;
         private final Object waiter = new Object();
 
 
-        private ValidationHandler(boolean verbose) {
+        private Handler(boolean verbose) {
             this.verbose = verbose;
         }
 
@@ -495,28 +497,29 @@ public class CMDIValidatorTool {
 
 
         public int getTotalFileCount() {
-            return filesTotal;
+            return filesTotal.get();
         }
 
 
         public int getValidFileCount() {
-            return filesTotal - filesInvalid;
+            return filesTotal.get() - filesInvalid.get();
         }
 
         public int getInvalidFileCount() {
-            return filesInvalid;
+            return filesInvalid.get();
         }
 
 
         public float getFailureRate() {
-            return (filesTotal > 0)
-                    ? ((float) filesInvalid / (float) filesTotal)
+            final int total = filesTotal.get();
+            return (total > 0)
+                    ? ((float) filesInvalid.get() / (float) total)
                     : 0.0f;
         }
 
 
         public long getTotalBytes() {
-            return totalBytes;
+            return totalBytes.get();
         }
 
 
@@ -538,6 +541,7 @@ public class CMDIValidatorTool {
         @Override
         public void onJobStarted() throws CMDIValidatorException {
             logger.debug("validation process started");
+            this.started = System.currentTimeMillis();
         }
 
 
@@ -567,20 +571,23 @@ public class CMDIValidatorTool {
 
 
         @Override
-        public void onValidationSuccess(final CMDIValidatorResult result)
+        public void onValidationReport(final CMDIValidationReport report)
                 throws CMDIValidatorException {
-            final File file = result.getFile();
-            synchronized (this) {
-                filesTotal++;
-                if (file != null) {
-                    totalBytes += file.length();
-                }
-            } // synchronized (this) {
+            filesTotal.incrementAndGet();
 
-            if (result.isHighestSeverity(Severity.WARNING)) {
+            final File file = report.getFile();
+            if (file != null) {
+                totalBytes.getAndAdd(file.length());
+            }
+
+            switch (report.getHighestSeverity()) {
+            case INFO:
+                logger.debug("file '{}' is valid", file);
+                break;
+            case WARNING:
                 if (verbose) {
                     logger.warn("file '{}' is valid (with warnings):", file);
-                    for (Message msg : result.getMessages()) {
+                    for (Message msg : report.getMessages()) {
                         if ((msg.getLineNumber() != -1) &&
                                 (msg.getColumnNumber() != -1)) {
                             logger.warn(" ({}) {} [line={}, column={}]",
@@ -595,8 +602,8 @@ public class CMDIValidatorTool {
                         }
                     }
                 } else {
-                    Message msg = result.getFirstMessage(Severity.WARNING);
-                    int count   = result.getMessageCount(Severity.WARNING);
+                    Message msg = report.getFirstMessage(Severity.WARNING);
+                    int count   = report.getMessageCount(Severity.WARNING);
                     if (count > 1) {
                         logger.warn("file '{}' is valid (with warnings): {} ({} more warnings)",
                                 file, msg.getMessage(), (count - 1));
@@ -605,52 +612,42 @@ public class CMDIValidatorTool {
                                 file, msg.getMessage());
                     }
                 }
-            } else {
-                logger.debug("file '{}' is valid", file);
-            }
-        }
-
-
-        @Override
-        public void onValidationFailure(final CMDIValidatorResult result) {
-            final File file = result.getFile();
-            synchronized (this) {
-                filesTotal++;
-                filesInvalid++;
-                if (file != null) {
-                    totalBytes += file.length();
-                }
-            } // synchronized (this)
-
-            if (verbose) {
-            logger.error("file '{}' is invalid:", file);
-                for (Message msg : result.getMessages()) {
-                    if ((msg.getLineNumber() != -1) &&
-                            (msg.getColumnNumber() != -1)) {
-                        logger.error(" ({}) {} [line={}, column={}]",
-                                msg.getSeverity().getShortcut(),
-                                msg.getMessage(),
-                                msg.getLineNumber(),
-                                msg.getColumnNumber());
+                break;
+            case ERROR:
+                filesInvalid.incrementAndGet();
+                if (verbose) {
+                    logger.error("file '{}' is invalid:", file);
+                    for (Message msg : report.getMessages()) {
+                        if ((msg.getLineNumber() != -1) &&
+                                (msg.getColumnNumber() != -1)) {
+                            logger.error(" ({}) {} [line={}, column={}]", msg
+                                    .getSeverity().getShortcut(), msg
+                                    .getMessage(), msg.getLineNumber(), msg
+                                    .getColumnNumber());
+                        } else {
+                            logger.error(" ({}) {}", msg.getSeverity()
+                                    .getShortcut(), msg.getMessage());
+                        }
+                    }
+                } else {
+                    Message msg = report.getFirstMessage(Severity.ERROR);
+                    int count   = report.getMessageCount(Severity.ERROR);
+                    if (count > 1) {
+                        logger.error(
+                                "file '{}' is invalid: {} ({} more errors)",
+                                file, msg.getMessage(), (count - 1));
                     } else {
-                        logger.error(" ({}) {}",
-                                msg.getSeverity().getShortcut(),
+                        logger.error("file '{}' is invalid: {}", file,
                                 msg.getMessage());
                     }
                 }
-            } else {
-                Message msg = result.getFirstMessage(Severity.ERROR);
-                int count   = result.getMessageCount(Severity.ERROR);
-                if (count > 1) {
-                    logger.error("file '{}' is invalid: {} ({} more errors)",
-                            file, msg.getMessage(), (count - 1));
-                } else {
-                    logger.error("file '{}' is invalid: {}",
-                            file, msg.getMessage());
-                }
-            }
+                break;
+            default:
+                throw new CMDIValidatorException("unexpected severity: " +
+                        report.getHighestSeverity());
+            } // switch
         }
-    } // class JobHandler
+    } // class Handler
 
 
     static {
