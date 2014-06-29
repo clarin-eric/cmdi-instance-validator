@@ -58,10 +58,10 @@ final class CMDIWriteableValidatonReportImpl implements CMDIWriteableValidationR
 
     @Override
     public List<Message> getMessages() {
-        if ((messages == null) && !messages.isEmpty()) {
-            return Collections.emptyList();
-        } else {
+        if ((messages != null) && !messages.isEmpty()) {
             return Collections.unmodifiableList(messages);
+        } else {
+            return Collections.emptyList();
         }
     }
 
