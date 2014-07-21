@@ -2,31 +2,40 @@ Index: src/org/apache/xerces/impl/xs/XMLSchemaValidator.java
 ===================================================================
 --- src/org/apache/xerces/impl/xs/XMLSchemaValidator.java   (revision 1584342)
 +++ src/org/apache/xerces/impl/xs/XMLSchemaValidator.java   (working copy)
-@@ -1345,8 +1345,11 @@
+@@ -1345,8 +1345,17 @@
  
          fIdConstraint = false;
          //reset XSDDescription
-+        fXSDDescription.reset();
++        if (fXSDDescription != null) {
++            fXSDDescription.reset();
++        }
          fLocationPairs.clear();
          fExpandedLocationPairs.clear();
-+        fUnparsedLocations.clear();
-+        fGrammarBucket.reset();
++        if (fUnparsedLocations != null) {
++            fUnparsedLocations.clear();
++        }
++        if (fGrammarBucket != null) {
++            fGrammarBucket.reset();
++        }
  
          // cleanup id table
          fValidationState.resetIDTables();
-@@ -2693,6 +2696,16 @@
+@@ -2693,6 +2702,19 @@
                  }
              }
  
 +            /*
-+             * XXX: evil hack to revisit grammar pool with location information
++             * BEGIN EVIL HACK: revisit grammar pool with location informtion
 +             */
-+            if (grammar == null) {
++            if ((grammar == null) && (fGrammarPool != null)) {
 +                grammar = (SchemaGrammar) fGrammarPool.retrieveGrammar(fXSDDescription);
 +                if (grammar != null) {
 +                    fXSDDescription.fLocationHints = null;
 +                }
 +            }
++            /*
++             * END EVIL HACK
++             */
 +
              if (grammar == null || fXSDDescription.fLocationHints != null) {
                  boolean toParseSchema = true;
