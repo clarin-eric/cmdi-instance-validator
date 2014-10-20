@@ -19,12 +19,12 @@ package eu.clarin.cmdi.validator.tool;
 import humanize.Humanize;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.io.PrintWriter;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-
 import net.java.truevfs.access.TFile;
 import net.java.truevfs.access.TVFS;
 import net.java.truevfs.kernel.spec.FsSyncException;
@@ -37,6 +37,7 @@ import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.commons.io.filefilter.WildcardFileFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,6 +68,7 @@ public class CMDIValidatorTool {
     private static final char OPT_SCHEMA_CACHE_DIR       = 'c';
     private static final char OPT_NO_SCHEMATRON          = 'S';
     private static final char OPT_SCHEMATRON_FILE        = 's';
+    private static final char OPT_FILENAME_FILTER        = 'F';
     private static final char OPT_CHECK_PIDS             = 'p';
     private static final char OPT_CHECK_AND_RESOLVE_PIDS = 'P';
     private static final Logger logger =
@@ -87,6 +89,7 @@ public class CMDIValidatorTool {
         File schemaCacheDir       = null;
         boolean disableSchematron = false;
         File schematronFile       = null;
+        FileFilter fileFilter     = null;
         boolean checkPids         = false;
         boolean checkAndResolvePids   = false;
 
@@ -167,6 +170,20 @@ public class CMDIValidatorTool {
                 }
                 schematronFile = new File(name);
             }
+            if (line.hasOption(OPT_FILENAME_FILTER)) {
+                String wildcard = line.getOptionValue(OPT_FILENAME_FILTER);
+                if ((wildcard == null) || wildcard.isEmpty()) {
+                    throw new ParseException("invalid argument for -" +
+                            OPT_FILENAME_FILTER);
+                }
+                try {
+                    fileFilter = new WildcardFileFilter(wildcard);
+                } catch (IllegalArgumentException e) {
+                    throw new ParseException("invalid argument for -" +
+                            OPT_FILENAME_FILTER);
+                }
+            }
+
             if (line.hasOption(OPT_CHECK_PIDS)) {
                 checkPids = true;
             }
@@ -222,7 +239,7 @@ public class CMDIValidatorTool {
                     int totalFileCount = -1;
                     if (estimate && logger.isInfoEnabled()) {
                         logger.debug("counting files ...");
-                        totalFileCount = countFiles(archive);
+                        totalFileCount = countFiles(archive, fileFilter);
                     }
 
                     if (threadCount > 1) {
@@ -242,6 +259,9 @@ public class CMDIValidatorTool {
                     }
                     if (disableSchematron) {
                         builder.disableSchematron();
+                    }
+                    if (fileFilter != null) {
+                        builder.fileFilter(fileFilter);
                     }
 
                     CheckHandlesExtension checkHandleExtension = null;
@@ -437,6 +457,12 @@ public class CMDIValidatorTool {
                 .withLongOpt("schematron-file")
                 .create(OPT_SCHEMATRON_FILE));
         options.addOptionGroup(g3);
+        options.addOption(OptionBuilder
+                .withDescription("only process filenames matching a wildcard")
+                .hasArg()
+                .withArgName("WILDCARD")
+                .withLongOpt("file-filter")
+                .create(OPT_FILENAME_FILTER));
         OptionGroup g4 = new OptionGroup();
         g4.addOption(OptionBuilder
                 .withDescription("check persistent identifiers syntax")
@@ -451,14 +477,18 @@ public class CMDIValidatorTool {
     }
 
 
-    private static final int countFiles(TFile directory) {
+    private static final int countFiles(TFile directory,
+            FileFilter fileFilter) {
         int count = 0;
         final TFile[] entries = directory.listFiles();
         if ((entries != null) && (entries.length > 0)) {
             for (TFile entry : entries) {
                 if (entry.isDirectory()) {
-                    count += countFiles(entry);
+                    count += countFiles(entry, fileFilter);
                 } else {
+                    if ((fileFilter != null) && !fileFilter.accept(entry)) {
+                        continue;
+                    }
                     count++;
                 }
             }
