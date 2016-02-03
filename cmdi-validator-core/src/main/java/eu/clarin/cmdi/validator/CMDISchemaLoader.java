@@ -321,7 +321,7 @@ public final class CMDISchemaLoader {
                 .setConnectTimeout(connectTimeout)
                 .setSocketTimeout(socketTimeout)
                 .setConnectionRequestTimeout(0) /* infinite */
-                .setStaleConnectionCheckEnabled(false)
+                .setStaleConnectionCheckEnabled(true)
                 .build();
 
         final ConnectionKeepAliveStrategy keepAliveStrategy =
