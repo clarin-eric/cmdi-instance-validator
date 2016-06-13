@@ -131,8 +131,13 @@ public final class CMDIValidator {
     private State state = State.INIT;
     private Result result = null;
 
-
+    
     public CMDIValidator(final CMDIValidatorConfig config)
+            throws CMDIValidatorInitException {
+        this(config, config.getRoot(), config.getHandler());
+    }
+
+    public CMDIValidator(final CMDIValidatorConfig config, final File src, CMDIValidationHandler handler)
             throws CMDIValidatorInitException {
         if (config == null) {
             throw new NullPointerException("config == null");
@@ -229,12 +234,12 @@ public final class CMDIValidator {
         /*
          * other stuff
          */
-        final TFile root = new TFile(config.getRoot());
+        final TFile root = new TFile(src);
         this.files       = new FileEnumerator(root, config.getFileFilter());
         if (config.getHandler() == null) {
             throw new NullPointerException("handler == null");
         }
-        this.handler = config.getHandler();
+        this.handler = handler;
     }
 
 
@@ -330,6 +335,8 @@ public final class CMDIValidator {
 
     private static CMDISchemaLoader initSchemaLoader(
             final CMDIValidatorConfig config) throws CMDIValidatorInitException {
+        int connectTimeout = config.getConnectTimeout();
+        int socketTimeout = config.getSocketTimeout();
         File cacheDirectory = config.getSchemaCacheDirectory();
         if (cacheDirectory == null) {
             if (SystemUtils.IS_OS_WINDOWS &&
@@ -368,7 +375,7 @@ public final class CMDIValidator {
                         cacheDirectory.getAbsolutePath() + "' is not writable");
             }
         }
-        return new CMDISchemaLoader(cacheDirectory, CMDISchemaLoader.DISABLE_CACHE_AGING);
+        return new CMDISchemaLoader(cacheDirectory, CMDISchemaLoader.DISABLE_CACHE_AGING, connectTimeout, socketTimeout);
     }
 
 

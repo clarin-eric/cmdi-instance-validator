@@ -32,6 +32,8 @@ public class CMDIValidatorConfig {
     private File schematronSchemaFile = null;
     private boolean schematronDisabled = false;
     private List<CMDIValidatorExtension> extensions = null;
+    private int connectTimeout = 2500;
+    private int socketTimeout = 5000;
 
 
     private CMDIValidatorConfig(final File root,
@@ -91,6 +93,14 @@ public class CMDIValidatorConfig {
     }
 
 
+    public int getConnectTimeout() {
+        return connectTimeout;
+    }
+    
+    public int getSocketTimeout() {
+        return socketTimeout;
+    }
+    
     public static class Builder {
         private final CMDIValidatorConfig config;
 
@@ -170,6 +180,15 @@ public class CMDIValidatorConfig {
             return this;
         }
 
+        public Builder connectTimeout(int connectTimeout) {
+            config.connectTimeout = connectTimeout;
+            return this;
+        }
+
+        public Builder socketTimeout(int socketTimeout) {
+            config.socketTimeout = socketTimeout;
+            return this;
+        }
 
         public CMDIValidatorConfig build() {
             return config;

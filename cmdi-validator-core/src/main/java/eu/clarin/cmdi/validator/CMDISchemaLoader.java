@@ -68,7 +68,8 @@ public final class CMDISchemaLoader {
 
 
     public CMDISchemaLoader(File cacheDirectory, long maxCacheAge,
-            long maxNegativeCacheAge) {
+            long maxNegativeCacheAge, int connectTimeout,
+            int socketTimeout) {
         if (cacheDirectory == null) {
             throw new NullPointerException("cacheDirectory == null");
         }
@@ -81,12 +82,18 @@ public final class CMDISchemaLoader {
         this.cacheDirectory      = cacheDirectory;
         this.maxCacheAge         = maxCacheAge;
         this.maxNegativeCacheAge = maxNegativeCacheAge;
-        this.httpClient          = createHttpClient(2500, 5000);
+        this.httpClient          = createHttpClient(connectTimeout, socketTimeout);
     }
 
 
+    public CMDISchemaLoader(File cacheDirectory, long maxCacheAge, int connectTimeout,
+            int socketTimeout) {
+        this(cacheDirectory, maxCacheAge, TimeUnit.HOURS.toMillis(1), 
+                connectTimeout, socketTimeout);
+    }
+
     public CMDISchemaLoader(File cacheDirectory, long maxCacheAge) {
-        this(cacheDirectory, maxCacheAge, TimeUnit.HOURS.toMillis(1));
+        this(cacheDirectory, maxCacheAge, TimeUnit.HOURS.toMillis(1), 2500, 5000);
     }
 
 
@@ -166,6 +173,8 @@ public final class CMDISchemaLoader {
                     download(cacheDataFile, schemaLocation);
                     return new FileInputStream(cacheDataFile);
                 } catch (IOException e) {
+                    logger.error("downloading schema from '{}' failed", schemaLocation);
+                    logger.error("cause:", e);
                     failed = true;
                     throw e;
                 } finally {
