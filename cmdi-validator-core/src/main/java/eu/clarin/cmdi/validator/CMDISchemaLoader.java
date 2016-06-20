@@ -153,8 +153,12 @@ public final class CMDISchemaLoader {
                                 schemaLocation);
                         cacheDataFile.delete();
                     } else {
-                        logger.trace("-> from file cache");
-                        return new FileInputStream(cacheDataFile);
+                        synchronized (pending) {
+                            if (!pending.contains(schemaLocation)) {
+                                logger.trace("-> '{}' from file cache", schemaLocation);
+                                return new FileInputStream(cacheDataFile);
+                            }
+                        }
                     }
                 }
 
@@ -162,6 +166,7 @@ public final class CMDISchemaLoader {
                     if (!pending.contains(schemaLocation)) {
                         doDownload = true;
                         pending.add(schemaLocation);
+                        logger.trace("pending + '{}'", schemaLocation);
                     }
                 } // synchronized (pending)
             } // synchronized (guard)
@@ -171,6 +176,7 @@ public final class CMDISchemaLoader {
                 boolean failed = false;
                 try {
                     download(cacheDataFile, schemaLocation);
+                    logger.trace("downloaded schema from '{}' succesfully", schemaLocation);
                     return new FileInputStream(cacheDataFile);
                 } catch (IOException e) {
                     logger.error("downloading schema from '{}' failed", schemaLocation);
@@ -188,8 +194,10 @@ public final class CMDISchemaLoader {
                             }
                         }
                         synchronized (pending) {
+                            logger.trace("pending - '{}'", schemaLocation);
                             pending.remove(schemaLocation);
                             synchronized (waiter) {
+                                logger.trace("notify all waiters for downloading schema from '{}'", schemaLocation);
                                 waiter.notifyAll();
                             } // synchronized (waiter)
                         }// synchronized (pending)
@@ -198,6 +206,7 @@ public final class CMDISchemaLoader {
             } else {
                 try {
                     synchronized (waiter) {
+                        logger.trace("waiting for download schema from '{}'", schemaLocation);
                         waiter.wait();
                     } // synchronized (waiter)
                 } catch (InterruptedException e) {
