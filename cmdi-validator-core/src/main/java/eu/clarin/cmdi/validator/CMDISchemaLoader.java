@@ -93,7 +93,7 @@ public final class CMDISchemaLoader {
     }
 
     public CMDISchemaLoader(File cacheDirectory, long maxCacheAge) {
-        this(cacheDirectory, maxCacheAge, TimeUnit.HOURS.toMillis(1), 2500, 5000);
+        this(cacheDirectory, maxCacheAge, TimeUnit.HOURS.toMillis(1), 10000, 25000);
     }
 
 
@@ -344,12 +344,12 @@ public final class CMDISchemaLoader {
 
         final ConnectionKeepAliveStrategy keepAliveStrategy =
                 new ConnectionKeepAliveStrategy() {
-            @Override
-            public long getKeepAliveDuration(final HttpResponse response,
-                    final HttpContext context) {
-                return 60000;
-            }
-        };
+                    @Override
+                    public long getKeepAliveDuration(final HttpResponse response,
+                            final HttpContext context) {
+                        return 60000;
+                    }
+                };
 
         return HttpClients.custom()
                 .setUserAgent(USER_AGENT)

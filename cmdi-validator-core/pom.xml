@@ -26,8 +26,8 @@
 
     <properties>
         <!-- versions of dependencies -->
-        <truevfs.version>0.10.6</truevfs.version>
-        <truecommons.version>2.3.4</truecommons.version>
+        <truevfs.version>0.11.0</truevfs.version>
+        <truecommons.version>2.5.0</truecommons.version>
     </properties>
 
     <dependencies>
