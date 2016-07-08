@@ -93,7 +93,7 @@ public final class CMDISchemaLoader {
     }
 
     public CMDISchemaLoader(File cacheDirectory, long maxCacheAge) {
-        this(cacheDirectory, maxCacheAge, TimeUnit.HOURS.toMillis(1), 10000, 25000);
+        this(cacheDirectory, maxCacheAge, TimeUnit.HOURS.toMillis(1), 60000, 60000);
     }
 
 

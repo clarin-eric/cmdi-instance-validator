@@ -41,15 +41,15 @@
     <pattern>
         <title>Test xsi:schemaLocation</title>
         <rule role="warning" context="/cmd11:CMD">
-            <assert test="contains(@xsi:schemaLocation,'http://catalog.clarin.eu/ds/ComponentRegistry/rest/registry/profiles/')">
-                [CMDI Best Practice] /cmd:CMD/@xsi:schemaLocation doesn't refer to a schema from the Component Registry! [Actual value was [<value-of select="@xsi:schemaLocation"/>]
+            <assert test="matches(@xsi:schemaLocation,'http(s)?://catalog.clarin.eu/ds/ComponentRegistry/rest/')">
+                [CMDI Best Practice] /cmd:CMD/@xsi:schemaLocation doesn't refer to a schema from the Component Registry! Actual value was [<value-of select="@xsi:schemaLocation"/>]
             </assert>
         </rule>
     </pattern>
     <pattern>
         <title>Test xsi:schemaLocation</title>
         <rule role="warning" context="/cmd12:CMD">
-            <assert test="contains(@xsi:schemaLocation,'http://alpha-vlo.clarin.eu/component-registry-rest/rest/registry/1.x/profiles/')">
+            <assert test="matches(@xsi:schemaLocation,'http(s)?://catalog.clarin.eu/ds/ComponentRegistry/rest/')">
                 [CMDI Best Practice] /cmd:CMD/@xsi:schemaLocation doesn't refer to a schema from the Component Registry! [Actual value was [<value-of select="@xsi:schemaLocation"/>]
             </assert>
         </rule>
