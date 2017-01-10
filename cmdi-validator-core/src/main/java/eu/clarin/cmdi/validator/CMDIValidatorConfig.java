@@ -32,8 +32,8 @@ public class CMDIValidatorConfig {
     private File schematronSchemaFile = null;
     private boolean schematronDisabled = false;
     private List<CMDIValidatorExtension> extensions = null;
-    private int connectTimeout = 10000;
-    private int socketTimeout = 25000;
+    private int connectTimeout = 60000;
+    private int socketTimeout = 60000;
 
 
     private CMDIValidatorConfig(final File root,
