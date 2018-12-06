@@ -28,8 +28,10 @@ if [ -d ${DIRNAME}/endorsed ]; then
     done
 fi
 
-VM_OPTS=""
-if java -version 2>&1 | grep -q -i '64-bit'; then
-  VM_OPTS="-d64 $VM_OPTS"
+if [ `uname -s` = "SunOS" ]; then
+    # VM_OPTS=""  # uncomment to start "clean"
+    if java -version 2>&1 | grep -q -i '64-bit'; then
+        VM_OPTS="-d64 $VM_OPTS"
+    fi
 fi
 exec java ${VM_OPTS} -cp "${CP}" eu.clarin.cmdi.validator.tool.CMDIValidatorTool "$@"
