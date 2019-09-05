@@ -26,7 +26,7 @@
 
     <properties>
         <!-- versions of dependencies -->
-        <truevfs.version>0.11.0</truevfs.version>
+        <truevfs.version>0.12.0</truevfs.version>
         <truecommons.version>2.5.0</truecommons.version>
     </properties>
 
@@ -39,7 +39,7 @@
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
-            <version>4.3.4</version>
+            <version>4.5.3</version>
         </dependency>
 
         <dependency>
