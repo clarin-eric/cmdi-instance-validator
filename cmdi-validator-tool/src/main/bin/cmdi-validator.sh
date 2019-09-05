@@ -1,5 +1,7 @@
 #!/bin/sh
 
+VM_OPTS=""
+
 #script depends on GNU readlink, which is different from BSD readlink...
 READLINK=`which greadlink || which readlink`
 if ! ${READLINK} -f . >/dev/null 2>/dev/null
@@ -41,8 +43,4 @@ if [ -d ${DIRNAME}/endorsed ]; then
     done
 fi
 
-VM_OPTS=""
-if java -version 2>&1 | grep -q -i '64-bit'; then
-  VM_OPTS="-d64 $VM_OPTS"
-fi
 exec java ${VM_OPTS} -cp "${CP}" eu.clarin.cmdi.validator.tool.CMDIValidatorTool "$@"
