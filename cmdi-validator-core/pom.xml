@@ -1,6 +1,6 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>eu.clarin.cmdi</groupId>
@@ -71,14 +71,14 @@
 
         <dependency>
             <groupId>net.java.truevfs</groupId>
-            <artifactId>truevfs-kernel-impl</artifactId>
+            <artifactId>truevfs-kernel-impl_2.12</artifactId>
             <version>${truevfs.version}</version>
             <scope>runtime</scope>
         </dependency>
 
         <dependency>
             <groupId>net.java.truevfs</groupId>
-            <artifactId>truevfs-ext-logging</artifactId>
+            <artifactId>truevfs-ext-logging_2.12</artifactId>
             <version>${truevfs.version}</version>
             <scope>runtime</scope>
         </dependency>
@@ -159,19 +159,19 @@
             </plugin>
 
             <!--
-            <plugin>
-              <groupId>org.apache.maven.plugins</groupId>
-              <artifactId>maven-javadoc-plugin</artifactId>
-              <executions>
-                <execution>
-                  <id>attach-javadoc</id>
-                  <goals>
-                    <goal>jar</goal>
-                  </goals>
-                </execution>
-              </executions>
-            </plugin>
-        -->
+                <plugin>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-javadoc-plugin</artifactId>
+                  <executions>
+                    <execution>
+                      <id>attach-javadoc</id>
+                      <goals>
+                        <goal>jar</goal>
+                      </goals>
+                    </execution>
+                  </executions>
+                </plugin>
+            -->
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
