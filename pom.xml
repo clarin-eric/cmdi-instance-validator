@@ -33,7 +33,8 @@
         <maven.compiler.source>1.6</maven.compiler.source>
         <maven.compiler.target>1.6</maven.compiler.target>
         <!-- versions of common dependencies -->
-        <slf4j.version>1.7.7</slf4j.version>
+        <slf4j.version>1.7.28</slf4j.version>
+        <truevfs.version>0.12.0</truevfs.version>
     </properties>
 
     <dependencyManagement>
