@@ -31,9 +31,9 @@ import net.java.truevfs.kernel.spec.FsSyncException;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.GnuParser;
+import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
@@ -55,22 +55,22 @@ import eu.clarin.cmdi.validator.utils.HandleResolver;
 
 
 public class CMDIValidatorTool {
-    private static final String PRG_NAME                 = "cmdi-validator";
-    private static final long DEFAULT_PROGRESS_INTERVAL  = 15000;
-    private static final Locale LOCALE                   = Locale.ENGLISH;
-    private static final char OPT_DEBUG                  = 'd';
-    private static final char OPT_DEBUG_TRACE            = 'D';
-    private static final char OPT_QUIET                  = 'q';
-    private static final char OPT_VERBOSE                = 'v';
-    private static final char OPT_THREAD_COUNT           = 't';
-    private static final char OPT_NO_THREADS             = 'T';
-    private static final char OPT_NO_ESTIMATE            = 'E';
-    private static final char OPT_SCHEMA_CACHE_DIR       = 'c';
-    private static final char OPT_NO_SCHEMATRON          = 'S';
-    private static final char OPT_SCHEMATRON_FILE        = 's';
-    private static final char OPT_FILENAME_FILTER        = 'F';
-    private static final char OPT_CHECK_PIDS             = 'p';
-    private static final char OPT_CHECK_AND_RESOLVE_PIDS = 'P';
+    private static final String PRG_NAME                   = "cmdi-validator";
+    private static final long DEFAULT_PROGRESS_INTERVAL    = 15000;
+    private static final Locale LOCALE                     = Locale.ENGLISH;
+    private static final String OPT_DEBUG                  = "d";
+    private static final String OPT_DEBUG_TRACE            = "D";
+    private static final String OPT_QUIET                  = "q";
+    private static final String OPT_VERBOSE                = "v";
+    private static final String OPT_THREAD_COUNT           = "t";
+    private static final String OPT_NO_THREADS             = "T";
+    private static final String OPT_NO_ESTIMATE            = "E";
+    private static final String OPT_SCHEMA_CACHE_DIR       = "c";
+    private static final String OPT_NO_SCHEMATRON          = "S";
+    private static final String OPT_SCHEMATRON_FILE        = "s";
+    private static final String OPT_FILENAME_FILTER        = "F";
+    private static final String OPT_CHECK_PIDS             = "p";
+    private static final String OPT_CHECK_AND_RESOLVE_PIDS = "P";
     private static final Logger logger =
             LoggerFactory.getLogger(CMDIValidatorTool.class);
     private static final org.apache.log4j.ConsoleAppender appender;
@@ -80,25 +80,25 @@ public class CMDIValidatorTool {
         /*
          * application defaults
          */
-        int debugging             = 0;
-        boolean quiet             = false;
-        boolean verbose           = false;
-        int threadCount           = Runtime.getRuntime().availableProcessors();
-        boolean estimate          = true;
-        long progressInterval     = DEFAULT_PROGRESS_INTERVAL;
-        File schemaCacheDir       = null;
-        boolean disableSchematron = false;
-        File schematronFile       = null;
-        FileFilter fileFilter     = null;
-        boolean checkPids         = false;
-        boolean checkAndResolvePids   = false;
+        int debugging               = 0;
+        boolean quiet               = false;
+        boolean verbose             = false;
+        int threadCount             = Runtime.getRuntime().availableProcessors();
+        boolean estimate            = true;
+        long progressInterval       = DEFAULT_PROGRESS_INTERVAL;
+        File schemaCacheDir         = null;
+        boolean disableSchematron   = false;
+        File schematronFile         = null;
+        FileFilter fileFilter       = null;
+        boolean checkPids           = false;
+        boolean checkAndResolvePids = false;
 
         /*
          * setup command line parser
          */
         final Options options = createCommandLineOptions();
         try {
-            final CommandLineParser parser = new GnuParser();
+            final CommandLineParser parser = new DefaultParser();
             final CommandLine line = parser.parse(options, args);
             // check incompatible combinations
             if (line.hasOption(OPT_THREAD_COUNT) && line.hasOption(OPT_NO_THREADS)) {
@@ -402,76 +402,75 @@ public class CMDIValidatorTool {
     }
 
 
-    @SuppressWarnings("static-access")
     private static Options createCommandLineOptions() {
         final Options options = new Options();
         OptionGroup g1 = new OptionGroup();
-        g1.addOption(OptionBuilder
-                .withDescription("enable debugging output")
-                .withLongOpt("debug")
-                .create(OPT_DEBUG));
-        g1.addOption(OptionBuilder
-                .withDescription("enable full debugging output")
-                .withLongOpt("trace")
-                .create(OPT_DEBUG_TRACE));
-        g1.addOption(OptionBuilder
-                .withDescription("be quiet")
-                .withLongOpt("quiet")
-                .create(OPT_QUIET));
+        g1.addOption(Option.builder(OPT_DEBUG)
+                .longOpt("debug")
+                .desc("enable debugging output")
+                .build());
+        g1.addOption(Option.builder(OPT_DEBUG_TRACE)
+                .longOpt("trace")
+                .desc("enable full debugging output")
+                .build());
+        g1.addOption(Option.builder(OPT_QUIET)
+                .longOpt("quiet")
+                .desc("be quiet")
+                .build());
         options.addOptionGroup(g1);
-        options.addOption(OptionBuilder
-                .withDescription("be verbose")
-                .withLongOpt("verbose")
-                .create(OPT_VERBOSE));
+        options.addOption(Option.builder(OPT_VERBOSE)
+                .longOpt("verbose")
+                .desc("be verbose")
+                .build());
         OptionGroup g2 = new OptionGroup();
-        g2.addOption(OptionBuilder
-                .withDescription("number of validator threads")
+        g2.addOption(Option.builder(OPT_THREAD_COUNT)
                 .hasArg()
-                .withArgName("COUNT")
-                .withLongOpt("threads")
-                .create(OPT_THREAD_COUNT));
-        g2.addOption(OptionBuilder
-                .withDescription("disable threading")
-                .withLongOpt("no-threads")
-                .create(OPT_NO_THREADS));
+                .argName("COUNT")
+                .longOpt("threads")
+                .desc("number of validator threads")
+                .build());
+        g2.addOption(Option.builder(OPT_NO_THREADS)
+                .longOpt("no-threads")
+                .desc("disable threading")
+                .build());
         options.addOptionGroup(g2);
-        options.addOption(OptionBuilder
-            .withDescription("disable gathering of total file count for progress reporting")
-            .withLongOpt("no-estimate")
-            .create(OPT_NO_ESTIMATE));
-        options.addOption(OptionBuilder
-                .withDescription("schema caching directory")
+        options.addOption(Option.builder(OPT_NO_ESTIMATE)
+                .longOpt("no-estimate")
+                .desc("disable gathering of total file count for progress reporting")
+                .build());
+        options.addOption(Option.builder(OPT_SCHEMA_CACHE_DIR)
                 .hasArg()
-                .withArgName("DIRECTORY")
-                .withLongOpt("schema-cache-dir")
-                .create(OPT_SCHEMA_CACHE_DIR));
+                .argName("DIRECTORY")
+                .longOpt("schema-cache-dir")
+                .desc("schema caching directory")
+                .build());
         OptionGroup g3 = new OptionGroup();
-        g3.addOption(OptionBuilder
-                .withDescription("disable Schematron validator")
-                .withLongOpt("no-schematron")
-                .create(OPT_NO_SCHEMATRON));
-        g3.addOption(OptionBuilder
-                .withDescription("load Schematron schema from file")
+        g3.addOption(Option.builder(OPT_NO_SCHEMATRON)
+                .longOpt("no-schematron")
+                .desc("disable Schematron validator")
+                .build());
+        g3.addOption(Option.builder(OPT_SCHEMATRON_FILE)
                 .hasArg()
-                .withArgName("FILE")
-                .withLongOpt("schematron-file")
-                .create(OPT_SCHEMATRON_FILE));
+                .argName("FILE")
+                .longOpt("schematron-file")
+                .desc("load Schematron schema from file")
+                .build());
         options.addOptionGroup(g3);
-        options.addOption(OptionBuilder
-                .withDescription("only process filenames matching a wildcard")
+        options.addOption(Option.builder(OPT_FILENAME_FILTER)
                 .hasArg()
-                .withArgName("WILDCARD")
-                .withLongOpt("file-filter")
-                .create(OPT_FILENAME_FILTER));
+                .argName("WILDCARD")
+                .longOpt("file-filter")
+                .desc("only process filenames matching a wildcard")
+                .build());
         OptionGroup g4 = new OptionGroup();
-        g4.addOption(OptionBuilder
-                .withDescription("check persistent identifiers syntax")
-                .withLongOpt("check-pids")
-                .create(OPT_CHECK_PIDS));
-        g4.addOption(OptionBuilder
-                .withDescription("check persistent identifiers syntax and if they resolve properly")
-                .withLongOpt("check-and-resolve-pids")
-                .create(OPT_CHECK_AND_RESOLVE_PIDS));
+        g4.addOption(Option.builder(OPT_CHECK_PIDS)
+                .longOpt("check-pids")
+                .desc("check persistent identifiers syntax")
+                .build());
+        g4.addOption(Option.builder(OPT_CHECK_AND_RESOLVE_PIDS)
+                .longOpt("check-and-resolve-pids")
+                .desc("check persistent identifiers syntax and if they resolve properly")
+                .build());
         options.addOptionGroup(g4);
         return options;
     }
