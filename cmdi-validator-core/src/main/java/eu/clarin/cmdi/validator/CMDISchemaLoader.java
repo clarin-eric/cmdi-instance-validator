@@ -114,7 +114,7 @@ public final class CMDISchemaLoader {
         logger.trace("loading schema: targetNamespace={}, location={}",
                 targetNamespace, schemaLocation);
         InputStream stream = null;
-        if (XMLConstants.XML_NS_URI.equalsIgnoreCase(targetNamespace)) {
+        if (XMLConstants.XML_NS_URI.equals(targetNamespace)) {
             stream = this.getClass().getResourceAsStream(XML_XSD_RESSOURCE);
             if (stream != null) {
                 logger.trace("using bundled schema for '{}'", schemaLocation);
